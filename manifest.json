@@ -1,0 +1,33 @@
+{
+  "name": "pey.http",
+  "version": "0.1.0",
+  "architecture": "0.11",
+  "description": "Transfers text documents over HTTP as same-origin relative fetches for the host application.",
+  "type": "transport",
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "provides": [
+    {
+      "name": "pey.http.service",
+      "description": "Reads text documents over HTTP. Moves bytes only; it does not interpret document content.",
+      "methods": [
+        {
+          "name": "getText",
+          "description": "Fetches a text document with GET and returns its body as text. Only same-origin relative URLs are accepted. Network and protocol failures are converted to this plugin's standard error structure before returning; nothing about the transport leaks past this boundary.",
+          "params": [
+            { "name": "url", "type": "string — same-origin relative URL, e.g. 'docs/guide.md'" }
+          ],
+          "returns": "Promise<{ status: number, body: string }> on success, or a standard Bonyan error object on failure",
+          "errors": ["HTTP_URL_INVALID", "HTTP_NOT_FOUND", "HTTP_REQUEST_FAILED", "HTTP_MEDIA_TYPE_UNEXPECTED", "SERVICE_UNAVAILABLE"]
+        }
+      ]
+    }
+  ],
+  "events": [],
+  "config": {
+    "acceptedMediaTypes": ["text/markdown", "text/plain", "text/html"],
+    "timeoutMs": 15000
+  }
+}

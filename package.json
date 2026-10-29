@@ -1,0 +1,37 @@
+{
+  "name": "pey.http",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Transfers text documents over HTTP as same-origin relative fetches for the host application",
+  "exports": {
+    ".": "./index.js",
+    "./manifest.json": "./manifest.json",
+    "./lib/constants.js": "./lib/constants.js",
+    "./lib/error.js": "./lib/error.js",
+    "./lib/http-service.js": "./lib/http-service.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "manifest.json",
+    "index.js",
+    "lib/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs"
+  ],
+  "keywords": [
+    "pey",
+    "http",
+    "transport",
+    "fetch",
+    "bonyan"
+  ],
+  "license": "MIT"
+}
