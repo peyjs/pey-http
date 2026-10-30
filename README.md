@@ -1,5 +1,10 @@
 # pey.http
 
+[![AI](https://img.shields.io/badge/Built%20with-AI-blueviolet)](#)
+[![version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
+[![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Bonyan Architecture](https://img.shields.io/badge/bonyan-0.11-56c3bf)](https://github.com/barnevis/bonyan)
+
 ## Purpose
 
 Transport plugin of the Pey ecosystem: moves text documents over HTTP. It fetches same-origin relative URLs and returns their bodies; it never interprets document content.

@@ -1,6 +1,6 @@
 {
   "name": "pey.http",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "architecture": "0.11",
   "description": "Transfers text documents over HTTP as same-origin relative fetches for the host application.",
   "type": "transport",
