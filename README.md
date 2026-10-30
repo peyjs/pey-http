@@ -6,6 +6,7 @@ Transport plugin of the Pey ecosystem: moves text documents over HTTP. It fetche
 
 ## Structure
 
+- `docs/requirements.md` — requirements; the construction source of truth.
 - `manifest.json` — plugin contract (identity, service, config).
 - `index.js` — Bonyan two-phase entry point (`prepare` / `activate`).
 - `lib/constants.js` — plugin names, error codes, defaults.
@@ -20,4 +21,5 @@ Transport plugin of the Pey ecosystem: moves text documents over HTTP. It fetche
 
 ## See Also
 
-See [docs/reference.md](docs/reference.md) for the full API, events, errors, config, business rules, and constraints.
+- [docs/requirements.md](docs/requirements.md) for the "what and why", written before the implementation.
+- [docs/reference.md](docs/reference.md) for the full API, events, errors, config, business rules, and constraints.
