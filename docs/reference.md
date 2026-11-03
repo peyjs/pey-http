@@ -4,7 +4,7 @@ Self-contained reference for the `pey.http` transport plugin. The manifest (`man
 
 ## Purpose
 
-Moves text documents over HTTP for the host application. It fetches same-origin relative URLs and returns their bodies as text. It does not parse, validate, or interpret document content — that belongs to the product plugin consuming this service.
+Moves requests out and responses back without interpreting them. The caller owns the address, method, headers and body; the plugin transfers bytes. A server error status (401, 429, 500, …) is an ordinary result — the caller interprets it. Errors only mean the delivery itself failed. The legacy same-origin `getText` document fetch (this plugin's origin) rides on the same core as a convenience method.
 
 ## Structure
 
@@ -12,8 +12,11 @@ Moves text documents over HTTP for the host application. It fetches same-origin 
 - `index.js` — Bonyan two-phase entry point (`prepare` / `activate`).
 - `lib/constants.js` — plugin name, service name, error codes, defaults.
 - `lib/error.js` — standard Bonyan error factory.
-- `lib/http-service.js` — the HTTP text document service.
-- `tests/http-service.test.js` — service behavior with a fake fetch.
+- `lib/local-url.js` — the plain-http local-address rule.
+- `lib/redirects.js` — the redirect policy decisions.
+- `lib/http-service.js` — the transport service (request, stream, getText).
+- `tests/transport.test.js` — transport contract behavior with a fake fetch.
+- `tests/http-service.test.js` — legacy `getText` behavior with a fake fetch.
 - `tests/entry.test.js` — lifecycle wiring and manifest contract.
 
 ## Dependencies
@@ -23,27 +26,65 @@ Moves text documents over HTTP for the host application. It fetches same-origin 
 
 ## Public API
 
-The service `pey.http.service` provides one method.
+The service `pey.http.service` provides three methods. `request` and `stream` follow the shared flow pattern: the caller passes data handlers (stream only) and receives a handle `{ cancel, done }`. `done` never rejects and resolves exactly one of three endings:
 
-### `getText(url)`
+- `{ ending: 'completed', status, headers, body? }` — the transfer finished; `body` (a `Uint8Array`) is present for `request` always, and for `stream` only when the stream never started (error status).
+- `{ ending: 'interrupted', error }` — delivery failed; `error` is the standard structured Bonyan error (network, timeout, mid-stream cut, refused redirect).
+- `{ ending: 'cancelled' }` — the caller cancelled; no data was delivered after the cancel.
 
-Fetches a text document with GET and resolves to `{ status, body }`. Every failure resolves to a standard Bonyan error object (never a thrown raw error, never a rejected promise).
+Input-validation and availability failures reject the method call itself with the standard structured error — nothing raw ever crosses the boundary.
+
+### `request(input)`
+
+`input`: `{ url, method?, headers?, body?, timeoutMs? }`.
 
 ```js
-const result = await httpService.getText('docs/guide.md');
-
-if (result.code !== undefined) {
-  // standard Bonyan error: result.code, result.message, result.source, result.type
-  return;
+const handle = await http.request({
+  url: 'https://api.example.com/v1/chat/completions',
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+const final = await handle.done;
+if (final.ending === 'completed') {
+  const text = new TextDecoder().decode(final.body);
 }
-
-console.log(result.status); // 200
-console.log(result.body);   // '# راهنما ...'
 ```
 
-- `url` must be a relative URL on the application origin. Absolute URLs, URLs with a scheme, and URLs containing a fragment are rejected with `HTTP_URL_INVALID` before any request is sent.
-- `redirect: 'error'` is used, so a redirecting document fails with `HTTP_REQUEST_FAILED`.
-- The request has a configurable timeout (`timeoutMs`); a timeout or network failure returns `HTTP_REQUEST_FAILED`.
+- `url` must be an absolute `https` URL, or plain `http` to one of the defined local addresses (see below).
+- `headers` values are stringified as given; the plugin never adds, removes or logs a header.
+
+### `stream(input, { onChunk })`
+
+Same input; on a success status the body is delivered as ordered raw `Uint8Array` chunks through `onChunk`, undecoded — a multi-byte character split across chunks stays intact and decoding is the caller's job (e.g. `TextDecoder` with `{ stream: true }`). For an error status no stream starts; the status and body arrive as a completed result. The timeout applies to the interval with no incoming data, so a long but active response is never cut.
+
+```js
+const decoder = new TextDecoder();
+const handle = await http.stream(input, {
+  onChunk: (chunk) => feed(decoder.decode(chunk, { stream: true })),
+});
+const final = await handle.done;
+```
+
+### `getText(url)` — legacy
+
+The original text-document contract, kept unchanged for its consumers: GETs a same-origin **relative** URL and resolves to `{ status, body: string }`, or resolves to the standard error object (never throws, never rejects). Absolute URLs, scheme-bearing URLs and fragments are `HTTP_URL_INVALID`; 404 is `HTTP_NOT_FOUND`; the content type is checked against `acceptedMediaTypes`. Unlike version 1, a same-origin redirect is now followed (up to the cap) instead of failing.
+
+## The plain-http local-address rule
+
+Plain `http` is accepted only for hosts that are provably local, so a local model server works while arbitrary plaintext traffic stays impossible:
+
+- `localhost`, loopback `127.0.0.0/8` and `::1`
+- private IPv4: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+- IPv6 unique-local `fc00::/7` and link-local `fe80::/10`
+
+Rejected over plain http: any public address, IPv4-mapped IPv6 forms (`::ffff:a.b.c.d` — they route as plain IPv4), and names like `something.local` (a name cannot be trusted as local without resolving it). `https` is allowed for any host.
+
+## Redirect policy
+
+With step-by-step redirect control (non-browser environments): a redirect is followed only within the same origin, at most five hops. A cross-origin redirect — even https to https — is refused with `HTTP_REDIRECT_FORBIDDEN`, naming the destination origin (no query) so the caller can enter the final address directly, because the request body (private text) is re-sent on 307/308. An https→plain-http hop to a non-local host is refused with `HTTP_URL_FORBIDDEN`. A 303 re-issues the request as GET without a body.
+
+**Browser limitation (documented per the requirements):** a browser cannot control redirect steps (`redirect: 'manual'` yields opaque responses), so there the environment's own redirect behavior applies and the rules above cannot be enforced. Everywhere else they are enforced.
 
 ## Events
 
@@ -53,28 +94,37 @@ The plugin publishes no events.
 
 | Code | Situation | Type |
 |---|---|---|
-| `HTTP_URL_INVALID` | The URL is not a string, is empty, is absolute, carries a scheme, or contains a fragment. | operational |
-| `HTTP_NOT_FOUND` | The server responded 404. | operational |
-| `HTTP_REQUEST_FAILED` | Network failure, timeout, redirect, non-2xx status (other than 404), or an unreadable body. | operational |
-| `HTTP_MEDIA_TYPE_UNEXPECTED` | The response `Content-Type` is present and not in `acceptedMediaTypes`. | operational |
-| `SERVICE_UNAVAILABLE` | The plugin has been deactivated or shut down; the method call is refused. | operational |
+| `HTTP_URL_INVALID` | Malformed or (for `request`/`stream`) non-absolute URL; for `getText`, an absolute, scheme-bearing or fragment-bearing URL. | operational |
+| `HTTP_URL_FORBIDDEN` | Plain http to a non-local address, or an https→plain-http redirect to a non-local host. | operational |
+| `HTTP_REDIRECT_FORBIDDEN` | Cross-origin redirect, more than five redirects, or an unusable Location header. | operational |
+| `HTTP_INPUT_INVALID` | Malformed input (non-object input, bad headers/body/timeout, missing `onChunk`). | operational |
+| `HTTP_NETWORK_FAILED` | The request could not reach the server, or the environment blocked it (in a browser this includes CORS blocks, which cannot be distinguished). | operational |
+| `HTTP_TIMEOUT` | The time budget ran out (whole request) or no data arrived within the idle budget (stream). | operational |
+| `HTTP_STREAM_INTERRUPTED` | The response stream was cut off before it finished. | operational |
+| `HTTP_REQUEST_FAILED` | Any other delivery failure. | operational |
+| `HTTP_NOT_FOUND` | `getText` only: the server responded 404. | operational |
+| `HTTP_MEDIA_TYPE_UNEXPECTED` | `getText` only: the response Content-Type is present and not in `acceptedMediaTypes`. | operational |
+| `SERVICE_UNAVAILABLE` | Called after deactivation/shutdown (thrown for `request`/`stream`, resolved as the error value for `getText`); an in-flight stream ends interrupted with this code. | operational |
 
 ## Config
 
 | Key | Type | Required | Default | Purpose |
 |---|---|---|---|---|
-| `acceptedMediaTypes` | `string[]` | No | `['text/markdown', 'text/plain', 'text/html']` | Allowed response media types (an absent Content-Type is always accepted). |
-| `timeoutMs` | `number` | No | `15000` | Request timeout in milliseconds. |
+| `timeoutMs` | `number` | No | `60000` | Default whole-request timeout in milliseconds; per-request `timeoutMs` overrides it (and is the idle budget for streams). |
+| `streamIdleTimeoutMs` | `number` | No | `60000` | Default no-data interval budget for streams. |
+| `acceptedMediaTypes` | `string[]` | No | `['text/markdown', 'text/plain', 'text/html']` | `getText` content-type allow-list (an absent Content-Type is always accepted). |
 
 ## Business Rules
 
-- Only same-origin relative URLs are accepted; anything else is refused before a request is made.
-- A 404 is reported as its own error code so callers can distinguish "document missing" from "transport broken".
-- Media-type checking protects the viewer: a server returning unexpected content is refused rather than rendered.
-- Raw network errors never leave the plugin boundary; they are converted to the standard Bonyan error structure with a safe message.
+- A server error status is a result, not an error; the caller interprets it.
+- After `cancel()` no data is delivered, and the ending is `cancelled` — never a network error.
+- Raw bytes are never decoded or transformed for `stream`; chunks arrive strictly in order.
+- Headers, body and credentials never appear in errors, logs or events (there are none); error messages carry at most the address without its query.
+- The plugin holds no secrets and no state between requests; every request is independent and parallel requests do not interfere.
+- Startup sends nothing. After deactivation every call is refused, and an in-flight stream ends as interrupted with `SERVICE_UNAVAILABLE`.
 
 ## Constraints
 
-- Do not use this service for binary downloads or APIs expecting JSON parsing — it is a text document transport only.
+- Do not use this service as a key vault or a retry queue; the caller owns authentication and repetition.
 - Do not rely on error `message` text; branch on `code`.
-- This plugin must not gain document-parsing or business logic; content interpretation belongs to the product plugin.
+- This plugin must not gain content interpretation (SSE parsing, JSON handling) — that belongs to its consumers.
