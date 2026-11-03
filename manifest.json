@@ -22,7 +22,7 @@
               "type": "{ url: string, method?: string, headers?: object, body?: string | Uint8Array, timeoutMs?: number } — absolute URL; plain http is accepted only for the defined local addresses"
             }
           ],
-          "returns": "{ cancel: () => void, done: Promise<{ ending: 'completed', status: number, headers: object, body: Uint8Array } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> }",
+          "returns": "Promise resolving to { cancel: () => void, done: Promise<{ ending: 'completed', status: number, headers: object, body: Uint8Array } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> }",
           "errors": ["HTTP_URL_INVALID", "HTTP_URL_FORBIDDEN", "HTTP_REDIRECT_FORBIDDEN", "HTTP_INPUT_INVALID", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "HTTP_REQUEST_FAILED", "SERVICE_UNAVAILABLE"]
         },
         {
@@ -38,7 +38,7 @@
               "type": "{ onChunk: (chunk: Uint8Array) => void }"
             }
           ],
-          "returns": "{ cancel: () => void, done: Promise<{ ending: 'completed', status: number, headers: object, body?: Uint8Array } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> } — body is present only when the stream never started (error status)",
+          "returns": "Promise resolving to { cancel: () => void, done: Promise<{ ending: 'completed', status: number, headers: object, body?: Uint8Array } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> } — body is present only when the stream never started (error status)",
           "errors": ["HTTP_URL_INVALID", "HTTP_URL_FORBIDDEN", "HTTP_REDIRECT_FORBIDDEN", "HTTP_INPUT_INVALID", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "HTTP_STREAM_INTERRUPTED", "HTTP_REQUEST_FAILED", "SERVICE_UNAVAILABLE"]
         },
         {
