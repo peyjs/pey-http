@@ -1,8 +1,8 @@
 {
   "name": "pey.http",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "architecture": "0.11",
-  "description": "Transfers text documents over HTTP as same-origin relative fetches for the host application.",
+  "description": "Outbound HTTP transport: moves requests out and responses back without interpreting them — plain requests, raw-byte progressive responses, per-request cancellation and timeouts; keeps the legacy same-origin getText document fetch on the same core",
   "type": "transport",
   "dependencies": {
     "required": [],
@@ -11,15 +11,43 @@
   "provides": [
     {
       "name": "pey.http.service",
-      "description": "Reads text documents over HTTP. Moves bytes only; it does not interpret document content.",
+      "description": "Generic outbound HTTP transfer. The caller owns the address, method, headers and body; the plugin moves bytes and interprets nothing. Every operation runs through the shared flow pattern: the caller hands in data handlers and receives a handle with cancel() and a done promise that resolves exactly one of three endings — completed, interrupted (with a standard structured error), or cancelled; no data is delivered after cancellation. Input-validation and availability failures throw the standard structured error instead.",
       "methods": [
         {
+          "name": "request",
+          "description": "Sends one HTTP request and waits for the complete response. An error status from the server is an ordinary result — status and body are returned for the caller to interpret; errors only mean delivery itself failed. Returns a handle: { cancel(), done } where done resolves { ending: 'completed', status, headers, body: Uint8Array } | { ending: 'interrupted', error } | { ending: 'cancelled' }.",
+          "params": [
+            {
+              "name": "input",
+              "type": "{ url: string, method?: string, headers?: object, body?: string | Uint8Array, timeoutMs?: number } — absolute URL; plain http is accepted only for the defined local addresses"
+            }
+          ],
+          "returns": "{ cancel: () => void, done: Promise<{ ending: 'completed', status: number, headers: object, body: Uint8Array } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> }",
+          "errors": ["HTTP_URL_INVALID", "HTTP_URL_FORBIDDEN", "HTTP_REDIRECT_FORBIDDEN", "HTTP_INPUT_INVALID", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "HTTP_REQUEST_FAILED", "SERVICE_UNAVAILABLE"]
+        },
+        {
+          "name": "stream",
+          "description": "Same transfer as request, but on a success status the body is delivered progressively as raw ordered Uint8Array chunks through handlers.onChunk, undecoded. For an error status no stream starts and the status and body arrive as an ordinary completed result. The timeout applies to the interval with no incoming data, not the whole response duration.",
+          "params": [
+            {
+              "name": "input",
+              "type": "{ url: string, method?: string, headers?: object, body?: string | Uint8Array, timeoutMs?: number } — absolute URL; plain http is accepted only for the defined local addresses"
+            },
+            {
+              "name": "handlers",
+              "type": "{ onChunk: (chunk: Uint8Array) => void }"
+            }
+          ],
+          "returns": "{ cancel: () => void, done: Promise<{ ending: 'completed', status: number, headers: object, body?: Uint8Array } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> } — body is present only when the stream never started (error status)",
+          "errors": ["HTTP_URL_INVALID", "HTTP_URL_FORBIDDEN", "HTTP_REDIRECT_FORBIDDEN", "HTTP_INPUT_INVALID", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "HTTP_STREAM_INTERRUPTED", "HTTP_REQUEST_FAILED", "SERVICE_UNAVAILABLE"]
+        },
+        {
           "name": "getText",
-          "description": "Fetches a text document with GET and returns its body as text. Only same-origin relative URLs are accepted. Network and protocol failures are converted to this plugin's standard error structure before returning; nothing about the transport leaks past this boundary.",
+          "description": "Legacy convenience method kept for the text-document transport this plugin grew out of: GETs a same-origin relative URL and returns the decoded text, checking the content type against the accepted list and mapping 404. Returns the structured error as the resolved value instead of throwing (its original contract).",
           "params": [
             { "name": "url", "type": "string — same-origin relative URL, e.g. 'docs/guide.md'" }
           ],
-          "returns": "Promise<{ status: number, body: string }> on success, or a standard Bonyan error object on failure",
+          "returns": "Promise<{ status: number, body: string }> on success, or a standard Bonyan error object as the resolved value on failure",
           "errors": ["HTTP_URL_INVALID", "HTTP_NOT_FOUND", "HTTP_REQUEST_FAILED", "HTTP_MEDIA_TYPE_UNEXPECTED", "SERVICE_UNAVAILABLE"]
         }
       ]
@@ -27,7 +55,8 @@
   ],
   "events": [],
   "config": {
-    "acceptedMediaTypes": ["text/markdown", "text/plain", "text/html"],
-    "timeoutMs": 15000
+    "timeoutMs": 60000,
+    "streamIdleTimeoutMs": 60000,
+    "acceptedMediaTypes": ["text/markdown", "text/plain", "text/html"]
   }
 }

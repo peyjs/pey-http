@@ -70,6 +70,6 @@ test('should_match_manifest_contract_when_loaded', async () => {
   assert.equal(manifest.provides.length, 1);
   assert.equal(manifest.provides[0].name, 'pey.http.service');
   const methodNames = manifest.provides[0].methods.map((method) => method.name);
-  assert.deepEqual(methodNames, ['getText']);
+  assert.deepEqual(methodNames, ['request', 'stream', 'getText']);
   assert.deepEqual(manifest.events, []);
 });

@@ -9,6 +9,8 @@
     "./lib/constants.js": "./lib/constants.js",
     "./lib/error.js": "./lib/error.js",
     "./lib/http-service.js": "./lib/http-service.js",
+    "./lib/local-url.js": "./lib/local-url.js",
+    "./lib/redirects.js": "./lib/redirects.js",
     "./package.json": "./package.json"
   },
   "engines": {

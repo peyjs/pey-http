@@ -5,10 +5,12 @@ import test from 'node:test';
 import { createHttpService } from '../lib/http-service.js';
 
 function createTextResponse(body, { status = 200, contentType = 'text/markdown' } = {}) {
+  const encoded = new TextEncoder().encode(body);
   return {
     ok: status >= 200 && status < 300,
     status,
     headers: new Map([['content-type', contentType]]),
+    arrayBuffer: async () => encoded.slice().buffer,
     text: async () => body,
   };
 }
@@ -127,10 +129,12 @@ test('should_return_media_type_error_when_content_type_is_unexpected', async () 
 });
 
 test('should_accept_document_when_content_type_is_absent', async () => {
+  const body = new TextEncoder().encode('plain');
   const fetchImpl = createFakeFetch([{
     ok: true,
     status: 200,
     headers: new Map(),
+    arrayBuffer: async () => body.slice().buffer,
     text: async () => 'plain',
   }]);
   const { service } = createHttpService({ config: {}, fetchImpl });
