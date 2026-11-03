@@ -1,8 +1,8 @@
 {
   "name": "pey.http",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "description": "Transfers text documents over HTTP as same-origin relative fetches for the host application",
+  "description": "Outbound HTTP transport: plain requests, raw-byte progressive responses, cancellation and timeouts, plus the legacy same-origin getText document fetch",
   "exports": {
     ".": "./index.js",
     "./manifest.json": "./manifest.json",
