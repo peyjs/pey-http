@@ -121,6 +121,8 @@ The plugin publishes no events.
 - Raw bytes are never decoded or transformed for `stream`; chunks arrive strictly in order.
 - Headers, body and credentials never appear in errors, logs or events (there are none); error messages carry at most the address without its query.
 - The plugin holds no secrets and no state between requests; every request is independent and parallel requests do not interfere.
+- A GET/HEAD request with a body is refused (`HTTP_INPUT_INVALID`) before anything is sent.
+- `getText` succeeds only on a 2xx response; 404 maps to `HTTP_NOT_FOUND`, every other non-2xx folds into `HTTP_REQUEST_FAILED` (its original contract).
 - Startup sends nothing. After deactivation every call is refused, and an in-flight stream ends as interrupted with `SERVICE_UNAVAILABLE`.
 
 ## Constraints

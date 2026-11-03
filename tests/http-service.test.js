@@ -72,6 +72,15 @@ test('should_return_request_failed_error_when_server_responds_500', async () => 
   assert.equal(result.code, 'HTTP_REQUEST_FAILED');
 });
 
+test('should_return_request_failed_error_for_redirect_without_location', async () => {
+  const fetchImpl = createFakeFetch([createTextResponse('', { status: 304 })]);
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const result = await service.getText('docs/readme.md');
+
+  assert.equal(result.code, 'HTTP_REQUEST_FAILED');
+});
+
 test('should_return_request_failed_error_when_network_fails', async () => {
   const fetchImpl = createFakeFetch([() => { throw new TypeError('network down token=secret'); }]);
   const { service } = createHttpService({ config: {}, fetchImpl });

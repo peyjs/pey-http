@@ -199,6 +199,17 @@ test('should_reject_relative_url_for_request', async () => {
   assert.equal(fetchImpl.calls.length, 0);
 });
 
+test('should_reject_a_body_on_get_or_head_requests', async () => {
+  const fetchImpl = createFakeFetch(() => textResponse('x'));
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  await assert.rejects(
+    () => service.request({ url: 'https://api.example.com/v1/x', method: 'GET', body: 'nope' }),
+    (error) => error.code === 'HTTP_INPUT_INVALID',
+  );
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
 test('should_reject_malformed_input_fields_for_request', async () => {
   const { service } = createHttpService({ config: {}, fetchImpl: createFakeFetch(() => textResponse('x')) });
 
