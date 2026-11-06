@@ -101,10 +101,11 @@ The plugin publishes no events.
 | `HTTP_NETWORK_FAILED` | The request could not reach the server, or the environment blocked it (in a browser this includes CORS blocks, which cannot be distinguished). | operational |
 | `HTTP_TIMEOUT` | The time budget ran out (whole request) or no data arrived within the idle budget (stream). | operational |
 | `HTTP_STREAM_INTERRUPTED` | The response stream was cut off before it finished. | operational |
-| `HTTP_REQUEST_FAILED` | Any other delivery failure. | operational |
+| `HTTP_REQUEST_FAILED` | Any other delivery failure, or the receiving `onChunk` handler threw (detail `stage: 'chunk-handler'`). | operational |
 | `HTTP_NOT_FOUND` | `getText` only: the server responded 404. | operational |
 | `HTTP_MEDIA_TYPE_UNEXPECTED` | `getText` only: the response Content-Type is present and not in `acceptedMediaTypes`. | operational |
 | `SERVICE_UNAVAILABLE` | Called after deactivation/shutdown (thrown for `request`/`stream`, resolved as the error value for `getText`); an in-flight stream ends interrupted with this code. | operational |
+| `HTTP_TRANSPORT_UNAVAILABLE` | Startup only: no usable `fetch` implementation exists, or the transport failed to start. | startup |
 
 ## Config
 

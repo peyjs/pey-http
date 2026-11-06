@@ -41,14 +41,17 @@ test('should_return_status_and_body_when_document_is_fetched', async () => {
   assert.deepEqual(result, { status: 200, body: '# سلام' });
 });
 
-test('should_pass_get_method_and_timeout_when_request_is_sent', async () => {
+test('should_send_get_when_relative_url_is_resolved_against_the_origin', async () => {
   const fetchImpl = createFakeFetch([createTextResponse('x')]);
   const { service } = createHttpService({ config: { timeoutMs: 250 }, fetchImpl });
 
   await service.getText('docs/readme.md');
 
   assert.equal(fetchImpl.calls[0].options.method, 'GET');
-  assert.equal(fetchImpl.calls[0].url, 'docs/readme.md');
+  // The transfer loop works on absolute addresses; the relative document
+  // URL resolves against the environment origin (the validation base in
+  // non-browser runs).
+  assert.equal(fetchImpl.calls[0].url, 'http://pey.invalid/docs/readme.md');
 });
 
 test('should_return_not_found_error_when_server_responds_404', async () => {
@@ -72,7 +75,7 @@ test('should_return_request_failed_error_when_server_responds_500', async () => 
   assert.equal(result.code, 'HTTP_REQUEST_FAILED');
 });
 
-test('should_return_request_failed_error_for_redirect_without_location', async () => {
+test('should_return_request_failed_error_when_redirect_has_no_location', async () => {
   const fetchImpl = createFakeFetch([createTextResponse('', { status: 304 })]);
   const { service } = createHttpService({ config: {}, fetchImpl });
 
@@ -187,4 +190,42 @@ test('should_reject_startup_error_when_no_fetch_implementation_exists', () => {
   } finally {
     Object.defineProperty(globalThis, 'fetch', { value: originalFetch, configurable: true });
   }
+});
+
+test('should_follow_same_origin_redirect_when_document_moves', async () => {
+  // The 2.0.0 breaking change: getText now follows same-origin redirects.
+  const redirect = {
+    ok: false,
+    status: 302,
+    headers: new Map([['location', '/docs/moved.md']]),
+    arrayBuffer: async () => new ArrayBuffer(0),
+  };
+  const fetchImpl = createFakeFetch([redirect, createTextResponse('# محتوا')]);
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const result = await service.getText('docs/original.md');
+
+  assert.deepEqual(result, { status: 200, body: '# محتوا' });
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.ok(fetchImpl.calls[1].url.endsWith('/docs/moved.md'));
+});
+
+test('should_accept_query_only_relative_url_when_document_url_has_no_path', async () => {
+  const fetchImpl = createFakeFetch([createTextResponse('ok')]);
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const result = await service.getText('?a:b');
+
+  assert.deepEqual(result, { status: 200, body: 'ok' }, 'a query with a colon is a valid relative URL');
+});
+
+test('should_use_numeric_string_config_when_environment_delivers_strings', () => {
+  // configuration.md: environment values are strings; the plugin owns the
+  // type conversion instead of silently falling back to the default.
+  const { service } = createHttpService({
+    config: { timeoutMs: '120000', streamIdleTimeoutMs: '90000' },
+    fetchImpl: createFakeFetch([createTextResponse('x')]),
+  });
+
+  assert.equal(typeof service.request, 'function', 'a valid string config must start up cleanly');
 });

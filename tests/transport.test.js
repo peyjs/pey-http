@@ -184,7 +184,7 @@ test('should_pass_method_headers_body_when_request_is_sent', async () => {
   assert.equal(fetchImpl.calls[0].options.body, '{"a":1}');
 });
 
-test('should_reject_relative_url_for_request', async () => {
+test('should_reject_relative_url_when_request_url_is_not_absolute', async () => {
   const fetchImpl = createFakeFetch(() => textResponse('x'));
   const { service } = createHttpService({ config: {}, fetchImpl });
 
@@ -199,7 +199,7 @@ test('should_reject_relative_url_for_request', async () => {
   assert.equal(fetchImpl.calls.length, 0);
 });
 
-test('should_reject_a_body_on_get_or_head_requests', async () => {
+test('should_reject_body_when_request_uses_get_or_head', async () => {
   const fetchImpl = createFakeFetch(() => textResponse('x'));
   const { service } = createHttpService({ config: {}, fetchImpl });
 
@@ -210,7 +210,7 @@ test('should_reject_a_body_on_get_or_head_requests', async () => {
   assert.equal(fetchImpl.calls.length, 0);
 });
 
-test('should_reject_malformed_input_fields_for_request', async () => {
+test('should_reject_input_invalid_when_request_fields_are_malformed', async () => {
   const { service } = createHttpService({ config: {}, fetchImpl: createFakeFetch(() => textResponse('x')) });
 
   await assert.rejects(() => service.request('https://api.example.com'), (error) => error.code === 'HTTP_INPUT_INVALID');
@@ -241,7 +241,7 @@ const FORBIDDEN_URLS = [
   'http://example.com/v1',
 ];
 
-test('should_accept_defined_local_addresses_over_plain_http', async () => {
+test('should_accept_local_addresses_over_plain_http_when_host_is_defined_local', async () => {
   const { service } = createHttpService({ config: {}, fetchImpl: createFakeFetch(() => textResponse('x')) });
 
   for (const url of LOCAL_URLS) {
@@ -250,7 +250,7 @@ test('should_accept_defined_local_addresses_over_plain_http', async () => {
   }
 });
 
-test('should_reject_non_local_addresses_over_plain_http', async () => {
+test('should_reject_url_forbidden_when_plain_http_targets_a_non_local_host', async () => {
   const { service } = createHttpService({ config: {}, fetchImpl: createFakeFetch(() => textResponse('x')) });
 
   for (const url of FORBIDDEN_URLS) {
@@ -262,7 +262,7 @@ test('should_reject_non_local_addresses_over_plain_http', async () => {
   }
 });
 
-test('should_accept_any_host_over_https', async () => {
+test('should_accept_any_host_when_request_uses_https', async () => {
   const { service } = createHttpService({ config: {}, fetchImpl: createFakeFetch(() => textResponse('x')) });
 
   const final = await (await service.request({ url: 'https://8.8.8.8/v1' })).done;
@@ -282,7 +282,7 @@ test('should_report_cancelled_and_stop_delivery_when_cancelled', async () => {
   assert.equal(final.ending, 'cancelled');
 });
 
-test('should_give_exactly_one_ending_per_request', async () => {
+test('should_settle_exactly_one_ending_when_done_is_awaited_repeatedly', async () => {
   const fetchImpl = createFakeFetch(() => textResponse('done'));
   const { service } = createHttpService({ config: {}, fetchImpl });
 
@@ -294,7 +294,7 @@ test('should_give_exactly_one_ending_per_request', async () => {
   assert.equal(first.ending, 'completed');
 });
 
-test('should_reject_validation_failures_through_the_call_promise', async () => {
+test('should_reject_input_invalid_through_the_call_promise_when_validation_fails', async () => {
   const { service } = createHttpService({ config: {}, fetchImpl: createFakeFetch(() => textResponse('x')) });
 
   await assert.rejects(
@@ -305,28 +305,38 @@ test('should_reject_validation_failures_through_the_call_promise', async () => {
 
 // --- timeout -------------------------------------------------------------
 
-test('should_report_timeout_when_request_exceeds_its_budget', async () => {
+test('should_report_timeout_when_request_exceeds_its_budget', async (t) => {
+  // Mocked clock: the deadline is deterministic, never CI-flaky.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const fetchImpl = createFakeFetch(hangingResponder());
   const { service } = createHttpService({ config: { timeoutMs: 20 }, fetchImpl });
 
-  const final = await (await service.request({ url: 'https://api.example.com/v1/x' })).done;
+  const handle = await service.request({ url: 'https://api.example.com/v1/x' });
+  const settled = handle.done;
+  t.mock.timers.tick(20);
+  const final = await settled;
 
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'HTTP_TIMEOUT');
 });
 
-test('should_honor_per_request_timeout_over_config_default', async () => {
+test('should_use_per_request_timeout_when_it_overrides_the_config_default', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const fetchImpl = createFakeFetch(hangingResponder());
   const { service } = createHttpService({ config: { timeoutMs: 60000 }, fetchImpl });
 
-  const final = await (await service.request({ url: 'https://api.example.com/v1/x', timeoutMs: 20 })).done;
+  const handle = await service.request({ url: 'https://api.example.com/v1/x', timeoutMs: 20 });
+  const settled = handle.done;
+  t.mock.timers.tick(20);
+  const final = await settled;
 
   assert.equal(final.error.code, 'HTTP_TIMEOUT');
+  assert.notEqual(final.error.code, 'HTTP_NETWORK_FAILED');
 });
 
 // --- network failure and secrecy -----------------------------------------
 
-test('should_report_network_failure_without_leaking_query_or_headers', async () => {
+test('should_report_network_failed_without_secrets_when_the_server_is_unreachable', async () => {
   const fetchImpl = createFakeFetch(() => {
     throw new TypeError('fetch failed: token=sk-secret value');
   });
@@ -345,7 +355,7 @@ test('should_report_network_failure_without_leaking_query_or_headers', async () 
   assert.ok(final.error.message.includes('api.example.com/v1/chat'));
 });
 
-test('should_map_other_throwables_to_request_failed', async () => {
+test('should_map_unknown_throwables_to_request_failed_when_fetch_throws', async () => {
   const fetchImpl = createFakeFetch(() => { throw new Error('something odd'); });
   const { service } = createHttpService({ config: {}, fetchImpl });
 
@@ -356,7 +366,7 @@ test('should_map_other_throwables_to_request_failed', async () => {
 
 // --- streaming -----------------------------------------------------------
 
-test('should_deliver_chunks_in_order_and_announce_completion', async () => {
+test('should_deliver_chunks_in_order_when_the_stream_completes', async () => {
   const received = [];
   const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('ب'), bytes('c')]));
   const { service } = createHttpService({ config: {}, fetchImpl });
@@ -383,7 +393,7 @@ test('should_deliver_raw_bytes_undecoded_even_when_multibyte_char_is_split', asy
   assert.equal(new TextDecoder().decode(concatBytes(received)), 'سلام');
 });
 
-test('should_not_start_stream_on_error_status_and_deliver_body_instead', async () => {
+test('should_deliver_body_instead_of_stream_when_the_status_is_an_error', async () => {
   const received = [];
   const fetchImpl = createFakeFetch(() => textResponse('unauthorized', { status: 401 }));
   const { service } = createHttpService({ config: {}, fetchImpl });
@@ -422,14 +432,70 @@ test('should_report_stream_interrupted_when_body_reader_fails_midway', async () 
   assert.equal(final.error.code, 'HTTP_STREAM_INTERRUPTED');
 });
 
-test('should_report_timeout_when_no_data_arrives_within_idle_budget', async () => {
+test('should_report_timeout_when_no_data_arrives_within_idle_budget', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const fetchImpl = createFakeFetch(hangingResponder());
   const { service } = createHttpService({ config: { streamIdleTimeoutMs: 20 }, fetchImpl });
 
-  const final = await (await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: () => {} })).done;
+  const handle = await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: () => {} });
+  const settled = handle.done;
+  t.mock.timers.tick(20);
+  const final = await settled;
 
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'HTTP_TIMEOUT');
+});
+
+test('should_use_request_timeout_as_idle_budget_when_stream_overrides_it', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const fetchImpl = createFakeFetch(hangingResponder());
+  const { service } = createHttpService({ config: { streamIdleTimeoutMs: 60000 }, fetchImpl });
+
+  // The documented behavior: a per-request timeoutMs doubles as the idle
+  // budget for streaming, so a hung stream honors the caller's budget.
+  const handle = await service.stream({ url: 'https://api.example.com/v1/x', timeoutMs: 25 }, { onChunk: () => {} });
+  const settled = handle.done;
+  t.mock.timers.tick(25);
+  const final = await settled;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'HTTP_TIMEOUT');
+});
+
+test('should_keep_active_streams_alive_when_chunks_keep_rearming_the_idle_timer', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  // A reader that delivers one chunk per clock step, forever — a healthy
+  // slow stream must never be cut by its own idle timer.
+  let reads = 0;
+  const endlessResponder = () => ({
+    ok: true,
+    status: 200,
+    headers: new Map([['content-type', 'text/event-stream']]),
+    body: {
+      getReader() {
+        return {
+          read: async () => {
+            reads += 1;
+            return { done: false, value: bytes('x') };
+          },
+          cancel: async () => {},
+        };
+      },
+    },
+  });
+  const fetchImpl = createFakeFetch(endlessResponder);
+  const { service } = createHttpService({ config: { streamIdleTimeoutMs: 20 }, fetchImpl });
+
+  const handle = await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: () => {} });
+  for (let step = 0; step < 5; step += 1) {
+    t.mock.timers.tick(10);
+    await Promise.resolve();
+  }
+
+  assert.equal(reads >= 3, true, 'chunks kept flowing across idle re-arms');
+  assert.notEqual(handle.done, null);
+  handle.cancel();
+  await handle.done;
 });
 
 test('should_reject_input_invalid_when_stream_has_no_chunk_handler', async () => {
@@ -443,7 +509,7 @@ test('should_reject_input_invalid_when_stream_has_no_chunk_handler', async () =>
 
 // --- redirect policy -----------------------------------------------------
 
-test('should_follow_same_origin_redirect_up_to_the_cap', async () => {
+test('should_follow_same_origin_redirect_up_to_the_cap_when_hops_stay_allowed', async () => {
   const fetchImpl = createFakeFetch(redirectResponder(2, { final: textResponse('arrived') }));
   const { service } = createHttpService({ config: {}, fetchImpl });
 
@@ -454,7 +520,7 @@ test('should_follow_same_origin_redirect_up_to_the_cap', async () => {
   assert.equal(fetchImpl.calls.length, 3);
 });
 
-test('should_refuse_cross_origin_redirect_and_name_destination_origin', async () => {
+test('should_refuse_cross_origin_redirect_and_name_the_destination_when_hop_leaves_the_origin', async () => {
   const fetchImpl = createFakeFetch(() => ({
     ok: false,
     status: 302,
@@ -471,7 +537,7 @@ test('should_refuse_cross_origin_redirect_and_name_destination_origin', async ()
   assert.equal(final.error.message.includes('token'), false);
 });
 
-test('should_refuse_https_to_plain_http_redirect_for_non_local_host', async () => {
+test('should_refuse_https_to_plain_http_redirect_when_the_target_is_not_local', async () => {
   const fetchImpl = createFakeFetch(() => ({
     ok: false,
     status: 302,
@@ -486,7 +552,7 @@ test('should_refuse_https_to_plain_http_redirect_for_non_local_host', async () =
   assert.equal(final.error.code, 'HTTP_URL_FORBIDDEN');
 });
 
-test('should_refuse_redirects_beyond_the_cap', async () => {
+test('should_refuse_redirect_when_hops_exceed_the_allowed_cap', async () => {
   const fetchImpl = createFakeFetch(redirectResponder(0, { loop: true }));
   const { service } = createHttpService({ config: {}, fetchImpl });
 
@@ -496,7 +562,7 @@ test('should_refuse_redirects_beyond_the_cap', async () => {
   assert.equal(final.error.code, 'HTTP_REDIRECT_FORBIDDEN');
 });
 
-test('should_reissue_303_as_get_without_body', async () => {
+test('should_reissue_303_as_get_without_body_when_method_carries_one', async () => {
   const fetchImpl = createFakeFetch((url, options) => {
     if (url.endsWith('/start')) {
       return {
@@ -523,7 +589,7 @@ test('should_reissue_303_as_get_without_body', async () => {
 
 // --- lifecycle -----------------------------------------------------------
 
-test('should_reject_service_unavailable_after_deactivation', async () => {
+test('should_reject_service_unavailable_when_called_after_deactivation', async () => {
   const { service, deactivate } = createHttpService({ config: {}, fetchImpl: createFakeFetch(() => textResponse('x')) });
 
   deactivate();
@@ -545,4 +611,88 @@ test('should_end_in_flight_stream_as_interrupted_when_deactivated_mid_stream', a
   const final = await handle.done;
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+});
+
+// --- concurrency ---------------------------------------------------------
+
+test('should_run_concurrent_transfers_independently_when_cancel_one_of_two', async () => {
+  const received = [];
+  const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('b'), bytes('c')], { delayMs: 5 }));
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const cancelledHandle = await service.stream({ url: 'https://api.example.com/v1/cancelled' }, { onChunk: () => {} });
+  const liveHandle = await service.stream(
+    { url: 'https://api.example.com/v1/live' },
+    { onChunk: (chunk) => received.push(chunk) },
+  );
+
+  cancelledHandle.cancel();
+  const cancelledFinal = await cancelledHandle.done;
+  const liveFinal = await liveHandle.done;
+
+  assert.equal(cancelledFinal.ending, 'cancelled');
+  assert.equal(liveFinal.ending, 'completed', 'cancelling one transfer must not touch the other');
+  assert.deepEqual(concatBytes(received), bytes('abc'));
+});
+
+test('should_settle_both_concurrent_transfers_when_they_complete_together', async () => {
+  const responses = [textResponse('first'), textResponse('second')];
+  const fetchImpl = createFakeFetch(() => {
+    const responder = responses.shift();
+    if (responder === undefined) {
+      throw new Error('unexpected fetch call');
+    }
+    return responder;
+  });
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const [first, second] = await Promise.all([
+    service.request({ url: 'https://api.example.com/v1/a' }).then((handle) => handle.done),
+    service.request({ url: 'https://api.example.com/v1/b' }).then((handle) => handle.done),
+  ]);
+
+  assert.equal(first.ending, 'completed');
+  assert.equal(second.ending, 'completed');
+  assert.equal(new TextDecoder().decode(first.body), 'first');
+  assert.equal(new TextDecoder().decode(second.body), 'second');
+});
+
+// --- redirect body hygiene -----------------------------------------------
+
+test('should_release_intermediate_body_before_following_redirect', async () => {
+  let released = false;
+  const redirectResponse = {
+    ok: false,
+    status: 302,
+    headers: new Map([['location', '/v1/final']]),
+    body: {
+      cancel: async () => {
+        released = true;
+      },
+    },
+  };
+  const fetchImpl = createFakeFetch((url) => (url.endsWith('/v1/start') ? redirectResponse : textResponse('final body')));
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const final = await (await service.request({ url: 'https://api.example.com/v1/start' })).done;
+
+  assert.equal(final.ending, 'completed');
+  assert.equal(new TextDecoder().decode(final.body), 'final body');
+  assert.equal(released, true, 'the intermediate 30x body must be released, not held until GC');
+});
+
+test('should_report_request_failed_when_chunk_handler_throws', async () => {
+  const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('b')]));
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const final = await (
+    await service.stream(
+      { url: 'https://api.example.com/v1/x' },
+      { onChunk: () => { throw new Error('consumer bug'); } },
+    )
+  ).done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'HTTP_REQUEST_FAILED', 'a handler bug is not a stream interruption');
+  assert.deepEqual(final.error.detail, { stage: 'chunk-handler' });
 });

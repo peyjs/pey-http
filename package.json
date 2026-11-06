@@ -1,6 +1,6 @@
 {
   "name": "pey.http",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "module",
   "description": "Outbound HTTP transport: plain requests, raw-byte progressive responses, cancellation and timeouts, plus the legacy same-origin getText document fetch",
   "exports": {

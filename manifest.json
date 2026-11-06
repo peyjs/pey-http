@@ -1,6 +1,6 @@
 {
   "name": "pey.http",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "architecture": "0.11",
   "description": "Outbound HTTP transport: moves requests out and responses back without interpreting them — plain requests, raw-byte progressive responses, per-request cancellation and timeouts; keeps the legacy same-origin getText document fetch on the same core",
   "type": "transport",

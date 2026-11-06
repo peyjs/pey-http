@@ -1,6 +1,6 @@
 // Wires the HTTP transport service into Bonyan's two-phase plugin lifecycle.
 
-import { SERVICE_NAME } from './lib/constants.js';
+import { ERROR_CODES, SERVICE_NAME } from './lib/constants.js';
 import { createHttpError } from './lib/error.js';
 import { createHttpService } from './lib/http-service.js';
 
@@ -24,9 +24,9 @@ export async function prepare(prepareContext) {
   } catch (error) {
     // createHttpService throws raw only for the unavailable-fetch startup case;
     // normalize anything unexpected so nothing raw crosses the boundary.
-    throw error.code === 'HTTP_TRANSPORT_UNAVAILABLE'
+    throw error.code === ERROR_CODES.TRANSPORT_UNAVAILABLE
       ? error
-      : createHttpError('HTTP_TRANSPORT_UNAVAILABLE', 'The HTTP transport could not start', 'startup');
+      : createHttpError(ERROR_CODES.TRANSPORT_UNAVAILABLE, 'The HTTP transport could not start', 'startup');
   }
 
   lifecycleControls = http;

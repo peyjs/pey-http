@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.0.1] - 1405-08-15
+
+Review-fix release; no contract change.
+
+### Fixed
+
+- Intermediate redirect responses are released (`body.cancel()`) before the next hop — an unread 30x body held its connection until garbage collection.
+- A throwing `onChunk` handler now ends the stream as `HTTP_REQUEST_FAILED` with `detail.stage: 'chunk-handler'` instead of a misleading `HTTP_STREAM_INTERRUPTED`, and the reader is always released (`finally`) on every exit path.
+- `getText` redirects actually work now: the relative document URL resolves against the environment origin before the transfer, so the redirect loop's same-origin checks see absolute addresses (previously any redirect on a `getText` request was refused as an unusable Location).
+- `getText('?a:b')` is accepted — the scheme heuristic no longer reads the query as a scheme.
+- Numeric-string config values (`timeoutMs: "60000"` from environment sources) are converted instead of silently ignored.
+- `redactUrl` keeps relative addresses (minus query/fragment) instead of an empty string in network error messages.
+
+### Changed
+
+- Transfer execution moved to `lib/transfer.js`; `HTTP_TRANSPORT_UNAVAILABLE` is a declared constant and listed in the errors reference.
+- Timeout tests run on `t.mock.timers`; per-source test files added (`local-url`, `redirects`, `error`); new tests for concurrent transfers with independent cancel, same-origin `getText` redirect, intermediate-body release, handler-error mapping, request-timeout-as-idle-budget and idle re-arming; test names normalized to `should_…_when_…` (74 tests).
+
 ## [2.0.0] - 1405-08-13
 
 Breaking redesign of the transport contract per the new `docs/requirements.md` (the generic outbound transport needed by the chat/voice capability stack), while keeping the legacy text-document fetch working on the same core.
