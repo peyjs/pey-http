@@ -219,13 +219,73 @@ test('should_accept_query_only_relative_url_when_document_url_has_no_path', asyn
   assert.deepEqual(result, { status: 200, body: 'ok' }, 'a query with a colon is a valid relative URL');
 });
 
-test('should_use_numeric_string_config_when_environment_delivers_strings', () => {
+test('should_use_numeric_string_config_when_environment_delivers_strings', async (t) => {
   // configuration.md: environment values are strings; the plugin owns the
-  // type conversion instead of silently falling back to the default.
+  // type conversion — the string value must really become the timeout
+  // budget, not silently fall back to the default.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  // A fetch that hangs but honors the abort signal: the mocked deadline is
+  // the only way out, exactly like a real stalled request.
+  const fetchImpl = (url, options = {}) => new Promise((resolve, reject) => {
+    const abortError = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+    if (options.signal?.aborted) {
+      reject(abortError);
+      return;
+    }
+    options.signal?.addEventListener('abort', () => reject(abortError), { once: true });
+  });
   const { service } = createHttpService({
-    config: { timeoutMs: '120000', streamIdleTimeoutMs: '90000' },
-    fetchImpl: createFakeFetch([createTextResponse('x')]),
+    config: { timeoutMs: '20' },
+    fetchImpl,
   });
 
-  assert.equal(typeof service.request, 'function', 'a valid string config must start up cleanly');
+  const handle = await service.request({ url: 'https://api.example.com/v1/x' });
+  const settled = handle.done;
+  t.mock.timers.tick(20);
+  const final = await settled;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'HTTP_TIMEOUT', 'the string config became the real budget');
+});
+
+test('should_fail_startup_when_the_timeout_config_is_present_but_unusable', () => {
+  for (const bad of ['abc', 0, -5, true]) {
+    assert.throws(
+      () => createHttpService({ config: { timeoutMs: bad }, fetchImpl: createFakeFetch([]) }),
+      (error) => error.code === 'HTTP_INPUT_INVALID' && error.type === 'startup',
+      `timeoutMs ${JSON.stringify(bad)} must fail loudly, not fall back silently`,
+    );
+  }
+});
+
+test('should_fall_back_to_default_media_types_when_accepted_media_types_is_empty', async () => {
+  const { service } = createHttpService({
+    config: { acceptedMediaTypes: [] },
+    fetchImpl: createFakeFetch([createTextResponse('# سلام', { contentType: 'application/octet-stream' })]),
+  });
+
+  // The empty array falls back to the defaults, and octet-stream is not
+  // among them: the document is refused with the media-type code.
+  const result = await service.getText('docs/x.md');
+  assert.equal(result.code, 'HTTP_MEDIA_TYPE_UNEXPECTED');
+});
+
+test('should_refuse_every_call_when_shutdown_hook_runs_at_the_entry_level', async () => {
+  const context = {
+    config: {},
+    events: { publish: () => {}, subscribe: () => () => {} },
+    onShutdown: null,
+    onDeactivated: null,
+    reportCriticalError: () => {},
+  };
+  const { prepare } = await import('../index.js');
+  const registrations = await prepare(context);
+
+  // The hooks must really deactivate the service, not just exist.
+  await context.onShutdown();
+
+  await assert.rejects(
+    () => registrations[0].object.request({ url: 'https://api.example.com/v1/x' }),
+    (error) => error.code === 'SERVICE_UNAVAILABLE',
+  );
 });

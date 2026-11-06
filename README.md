@@ -19,6 +19,7 @@ Transport plugin of the Pey ecosystem: moves requests out and responses back wit
 - `lib/local-url.js` — the plain-http local-address rule.
 - `lib/redirects.js` — the redirect policy decisions.
 - `lib/http-service.js` — the transport service (request, stream, getText).
+- `lib/transfer.js` — the transfer machinery (input, redirect loop, flow endings).
 - `tests/` — unit tests (`node:test`, fake fetch only).
 
 ## Dependencies

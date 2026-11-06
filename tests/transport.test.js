@@ -6,6 +6,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHttpService } from '../lib/http-service.js';
 
+/**
+ * Advances the mocked clock and drains the microtask queue once, so a
+ * resolved reader promise can continue its loop before the next tick.
+ * @param {object} timers Node's t.mock.timers.
+ * @param {number} [ms] Clock advance per step.
+ * @returns {Promise<void>}
+ */
+async function tickStep(timers, ms = 5) {
+  timers.tick(ms);
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function abortError() {
   return Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
 }
@@ -366,13 +379,20 @@ test('should_map_unknown_throwables_to_request_failed_when_fetch_throws', async 
 
 // --- streaming -----------------------------------------------------------
 
-test('should_deliver_chunks_in_order_when_the_stream_completes', async () => {
+test('should_deliver_chunks_in_order_when_the_stream_completes', async (t) => {
+  // Mocked clock: the fake reader paces its chunks with setTimeout, so the
+  // delivery order is deterministic without wall-clock sleeps.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const received = [];
   const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('ب'), bytes('c')]));
   const { service } = createHttpService({ config: {}, fetchImpl });
 
   const handle = await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: (chunk) => received.push(chunk) });
-  const final = await handle.done;
+  const settled = handle.done;
+  for (let step = 0; step < 6; step += 1) {
+    await tickStep(t.mock.timers, 5);
+  }
+  const final = await settled;
 
   assert.equal(final.ending, 'completed');
   assert.equal(final.status, 200);
@@ -380,14 +400,20 @@ test('should_deliver_chunks_in_order_when_the_stream_completes', async () => {
   assert.deepEqual(received, [bytes('a'), bytes('ب'), bytes('c')]);
 });
 
-test('should_deliver_raw_bytes_undecoded_even_when_multibyte_char_is_split', async () => {
+test('should_deliver_raw_bytes_undecoded_even_when_multibyte_char_is_split', async (t) => {
   const received = [];
   const full = bytes('سلام');
   // The two bytes of "س" (0xD8 0xB3) are deliberately torn apart.
   const fetchImpl = createFakeFetch(streamResponder([full.slice(0, 1), full.slice(1)]));
   const { service } = createHttpService({ config: {}, fetchImpl });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
 
-  await (await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: (chunk) => received.push(chunk) })).done;
+  const handle = await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: (chunk) => received.push(chunk) });
+  const settled = handle.done;
+  for (let step = 0; step < 6; step += 1) {
+    await tickStep(t.mock.timers, 5);
+  }
+  await settled;
 
   assert.deepEqual(concatBytes(received), full);
   assert.equal(new TextDecoder().decode(concatBytes(received)), 'سلام');
@@ -406,20 +432,24 @@ test('should_deliver_body_instead_of_stream_when_the_status_is_an_error', async 
   assert.deepEqual(received, []);
 });
 
-test('should_report_cancelled_and_no_further_chunks_when_cancelled_mid_stream', async () => {
+test('should_report_cancelled_and_no_further_chunks_when_cancelled_mid_stream', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const received = [];
   const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('b'), bytes('c')], { delayMs: 30 }));
   const { service } = createHttpService({ config: {}, fetchImpl });
 
   const handle = await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: (chunk) => received.push(chunk) });
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await tickStep(t.mock.timers, 30);
   handle.cancel();
-  const final = await handle.done;
+  const settled = handle.done;
+  const final = await settled;
 
   assert.equal(final.ending, 'cancelled');
   const countAtCancel = received.length;
-  await new Promise((resolve) => setTimeout(resolve, 60));
-  assert.equal(received.length, countAtCancel);
+  for (let step = 0; step < 6; step += 1) {
+    await tickStep(t.mock.timers, 30);
+  }
+  assert.equal(received.length, countAtCancel, 'no chunk may arrive after the cancel');
 });
 
 test('should_report_stream_interrupted_when_body_reader_fails_midway', async () => {
@@ -600,12 +630,13 @@ test('should_reject_service_unavailable_when_called_after_deactivation', async (
   assert.equal(text.code, 'SERVICE_UNAVAILABLE');
 });
 
-test('should_end_in_flight_stream_as_interrupted_when_deactivated_mid_stream', async () => {
+test('should_end_in_flight_stream_as_interrupted_when_deactivated_mid_stream', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('b'), bytes('c')], { delayMs: 30 }));
   const { service, deactivate } = createHttpService({ config: {}, fetchImpl });
 
   const handle = await service.stream({ url: 'https://api.example.com/v1/x' }, { onChunk: () => {} });
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await tickStep(t.mock.timers, 30);
   deactivate();
 
   const final = await handle.done;
@@ -615,7 +646,8 @@ test('should_end_in_flight_stream_as_interrupted_when_deactivated_mid_stream', a
 
 // --- concurrency ---------------------------------------------------------
 
-test('should_run_concurrent_transfers_independently_when_cancel_one_of_two', async () => {
+test('should_run_concurrent_transfers_independently_when_cancel_one_of_two', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const received = [];
   const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('b'), bytes('c')], { delayMs: 5 }));
   const { service } = createHttpService({ config: {}, fetchImpl });
@@ -628,6 +660,9 @@ test('should_run_concurrent_transfers_independently_when_cancel_one_of_two', asy
 
   cancelledHandle.cancel();
   const cancelledFinal = await cancelledHandle.done;
+  for (let step = 0; step < 6; step += 1) {
+    await tickStep(t.mock.timers, 5);
+  }
   const liveFinal = await liveHandle.done;
 
   assert.equal(cancelledFinal.ending, 'cancelled');
@@ -646,10 +681,9 @@ test('should_settle_both_concurrent_transfers_when_they_complete_together', asyn
   });
   const { service } = createHttpService({ config: {}, fetchImpl });
 
-  const [first, second] = await Promise.all([
-    service.request({ url: 'https://api.example.com/v1/a' }).then((handle) => handle.done),
-    service.request({ url: 'https://api.example.com/v1/b' }).then((handle) => handle.done),
-  ]);
+  const firstHandle = await service.request({ url: 'https://api.example.com/v1/a' });
+  const secondHandle = await service.request({ url: 'https://api.example.com/v1/b' });
+  const [first, second] = await Promise.all([firstHandle.done, secondHandle.done]);
 
   assert.equal(first.ending, 'completed');
   assert.equal(second.ending, 'completed');

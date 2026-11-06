@@ -15,8 +15,12 @@ Moves requests out and responses back without interpreting them. The caller owns
 - `lib/local-url.js` — the plain-http local-address rule.
 - `lib/redirects.js` — the redirect policy decisions.
 - `lib/http-service.js` — the transport service (request, stream, getText).
+- `lib/transfer.js` — the transfer machinery: input normalization, config, the redirect loop and the shared-flow endings.
 - `tests/transport.test.js` — transport contract behavior with a fake fetch.
 - `tests/http-service.test.js` — legacy `getText` behavior with a fake fetch.
+- `tests/local-url.test.js` — the local-address policy unit tests.
+- `tests/redirects.test.js` — the redirect policy unit tests.
+- `tests/error.test.js` — the boundary error factory unit tests.
 - `tests/entry.test.js` — lifecycle wiring and manifest contract.
 
 ## Dependencies
