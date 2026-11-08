@@ -58,6 +58,20 @@ test('should_reject_startup_error_when_prepare_receives_no_fetch', async () => {
   }
 });
 
+test('should_pass_the_config_error_through_when_prepare_receives_an_unusable_timeout', async () => {
+  // A structured startup error keeps its code and detail through prepare —
+  // the host needs to know WHICH configuration key is broken, not just
+  // that "the transport could not start".
+  const context = createPrepareContext({ config: { timeoutMs: 'fast' } });
+
+  await assert.rejects(
+    prepare(context),
+    (error) => error.code === 'HTTP_INPUT_INVALID'
+      && error.type === 'startup'
+      && error.detail?.value === 'fast',
+  );
+});
+
 test('should_match_manifest_contract_when_loaded', async () => {
   const manifest = JSON.parse(await readFile(MANIFEST_PATH, 'utf8'));
   const pkg = JSON.parse(await readFile(PACKAGE_PATH, 'utf8'));

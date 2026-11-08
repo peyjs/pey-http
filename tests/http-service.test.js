@@ -54,6 +54,48 @@ test('should_send_get_when_relative_url_is_resolved_against_the_origin', async (
   assert.equal(fetchImpl.calls[0].url, 'http://pey.invalid/docs/readme.md');
 });
 
+test('should_hand_redirects_to_the_environment_when_manual_support_is_injected_off', async () => {
+  // The injected override forces follow mode even on Node: the fetch call
+  // carries redirect: 'follow' and a redirect response surfaces untouched —
+  // the plugin never loops manually.
+  const redirectResponse = createTextResponse('', { status: 302, contentType: 'text/plain' });
+  redirectResponse.headers.set('location', 'https://origin.test/b');
+  const fetchImpl = createFakeFetch([redirectResponse]);
+  const { service } = createHttpService({ config: {}, fetchImpl, supportsManualRedirects: false });
+
+  const handle = await service.request({ url: 'https://origin.test/a' });
+  const final = await handle.done;
+
+  assert.equal(fetchImpl.calls[0].options.redirect, 'follow');
+  assert.equal(final.status, 302);
+  assert.equal(fetchImpl.calls.length, 1, 'no manual hop happens in follow mode');
+});
+
+test('should_follow_redirects_manually_when_manual_support_is_injected_on', async () => {
+  // The injected override forces the step-by-step loop even where the
+  // environment would follow: the same-origin 302 is rewritten to the
+  // destination and re-issued, still in manual mode.
+  const first = createTextResponse('', { status: 302, contentType: 'text/plain' });
+  first.headers.set('location', '/b');
+  const fetchImpl = createFakeFetch([
+    (url, options) => {
+      void url;
+      void options;
+      return first;
+    },
+    createTextResponse('مقصد'),
+  ]);
+  const { service } = createHttpService({ config: {}, fetchImpl, supportsManualRedirects: true });
+
+  const handle = await service.request({ url: 'https://origin.test/a' });
+  const final = await handle.done;
+
+  assert.equal(fetchImpl.calls[0].options.redirect, 'manual');
+  assert.equal(fetchImpl.calls[1].url, 'https://origin.test/b');
+  assert.equal(fetchImpl.calls[1].options.method, 'GET');
+  assert.equal(new TextDecoder().decode(final.body), 'مقصد');
+});
+
 test('should_return_not_found_error_when_server_responds_404', async () => {
   const fetchImpl = createFakeFetch([createTextResponse('missing', { status: 404 })]);
   const { service } = createHttpService({ config: {}, fetchImpl });

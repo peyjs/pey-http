@@ -86,9 +86,11 @@ Rejected over plain http: any public address, IPv4-mapped IPv6 forms (`::ffff:a.
 
 ## Redirect policy
 
-With step-by-step redirect control (non-browser environments): a redirect is followed only within the same origin, at most five hops. A cross-origin redirect — even https to https — is refused with `HTTP_REDIRECT_FORBIDDEN`, naming the destination origin (no query) so the caller can enter the final address directly, because the request body (private text) is re-sent on 307/308. An https→plain-http hop to a non-local host is refused with `HTTP_URL_FORBIDDEN`. A 303 re-issues the request as GET without a body.
+With step-by-step redirect control (non-browser environments): a redirect is followed only within the same origin, at most five hops. A cross-origin redirect — even https to https — is refused with `HTTP_REDIRECT_FORBIDDEN`, naming the destination origin (no query) so the caller can enter the final address directly, because the request body (private text) is re-sent on 307/308. An https→plain-http hop to a non-local host is refused with `HTTP_URL_FORBIDDEN`. The method rewrite mirrors the platform's follow behavior so both redirect modes behave identically: a 303 (any non-HEAD) and a 301/302 answered for POST re-issue as GET without a body — a private body is never replayed onto the redirected address.
 
 **Browser limitation (documented per the requirements):** a browser cannot control redirect steps (`redirect: 'manual'` yields opaque responses), so there the environment's own redirect behavior applies and the rules above cannot be enforced. Everywhere else they are enforced.
+
+**Injected override (for tests and exotic hosts):** `createHttpService({ supportsManualRedirects })` forces the mode — `true` enables the step-by-step loop above even where environment detection would choose `follow`, and `false` hands redirect handling to the environment's `redirect: 'follow'` even on Node. Unset, the mode is detected from the environment.
 
 ## Events
 
@@ -117,7 +119,7 @@ The plugin publishes no events.
 |---|---|---|---|---|
 | `timeoutMs` | `number` | No | `60000` | Default whole-request timeout in milliseconds; per-request `timeoutMs` overrides it (and is the idle budget for streams). |
 | `streamIdleTimeoutMs` | `number` | No | `60000` | Default no-data interval budget for streams. |
-| `acceptedMediaTypes` | `string[]` | No | `['text/markdown', 'text/plain', 'text/html']` | `getText` content-type allow-list (an absent Content-Type is always accepted). |
+| `acceptedMediaTypes` | `string[]` | No | `['text/markdown', 'text/plain', 'text/html']` | `getText` content-type allow-list (an absent Content-Type is always accepted). A present but non-array value fails startup with `HTTP_INPUT_INVALID` — like the timeouts, it is never silently replaced. |
 
 ## Business Rules
 

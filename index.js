@@ -22,9 +22,11 @@ export async function prepare(prepareContext) {
   try {
     http = createHttpService({ config: prepareContext.config });
   } catch (error) {
-    // createHttpService throws raw only for the unavailable-fetch startup case;
-    // normalize anything unexpected so nothing raw crosses the boundary.
-    throw error.code === ERROR_CODES.TRANSPORT_UNAVAILABLE
+    // Structured startup errors (unavailable fetch, invalid config values)
+    // pass through with their code and detail intact — the host needs to
+    // know WHICH configuration key is broken. Only something truly raw is
+    // normalized, so nothing unstructured crosses the boundary.
+    throw typeof error?.code === 'string' && error.code.startsWith('HTTP_')
       ? error
       : createHttpError(ERROR_CODES.TRANSPORT_UNAVAILABLE, 'The HTTP transport could not start', 'startup');
   }

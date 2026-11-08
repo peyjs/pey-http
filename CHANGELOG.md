@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.0] - 1405-08-17
+
+Round-2 and round-3 review fixes. MINOR: one behavior change plus a packaging-level removal.
+
+### Changed
+
+- **Invalid configuration now fails startup** instead of being silently replaced: a present but unusable `timeoutMs` / `streamIdleTimeoutMs` / `acceptedMediaTypes` throws `HTTP_INPUT_INVALID` (type `startup`, with the offending value in `detail`). Absent values and an empty `acceptedMediaTypes` array still take the defaults.
+- **Package exports tightened** to the public surface (`.` / `manifest.json` / `package.json`); the five previously exported `./lib/*` paths are gone — import the service, not its internals.
+- The redirect loop's method rewrite now mirrors the platform's follow behavior: a 301/302 answered for POST (and any non-HEAD on 303) re-issues as GET without a body, so both redirect modes behave identically and a private body is never replayed onto the redirected address (documented in the reference).
+- The manual-redirect capability is injectable: `createHttpService({ supportsManualRedirects })` forces either mode for tests and exotic hosts (documented; covered by both injection tests).
+
+### Fixed
+
+- The prepare entry passes structured startup errors through with their code and detail intact (a broken config key is diagnosable from the host log); only truly raw errors are normalized to `HTTP_TRANSPORT_UNAVAILABLE` (entry test added).
+- `tests/transfer.test.js` added: per-source unit coverage of `normalizeConfig` (fail-loud startup policy, defaults) and `normalizeTransferInput` (url/method/header/body boundaries).
+
 ## [2.0.1] - 1405-08-15
 
 Review-fix release; no contract change.
