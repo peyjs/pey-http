@@ -15,6 +15,8 @@ Round-2 and round-3 review fixes. MINOR: one behavior change plus a packaging-le
 
 - The prepare entry passes structured startup errors through with their code and detail intact (a broken config key is diagnosable from the host log); only truly raw errors are normalized to `HTTP_TRANSPORT_UNAVAILABLE` (entry test added).
 - `tests/transfer.test.js` added: per-source unit coverage of `normalizeConfig` (fail-loud startup policy, defaults) and `normalizeTransferInput` (url/method/header/body boundaries).
+- Dedicated tests for the 301/302 POST→GET rewrite (both statuses, manual mode) and its follow-mode counterpart (the environment performs the rewrite there).
+- The dead `PLUGIN_VERSION` constant is gone (the manifest is the single version source); the `supportsManualRedirects` option is documented in both factory JSDocs; the reference structure lists `tests/transfer.test.js` and the errors table reflects the `startup` face of `HTTP_INPUT_INVALID` (91 tests).
 
 ## [2.0.1] - 1405-08-15
 

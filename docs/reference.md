@@ -21,6 +21,7 @@ Moves requests out and responses back without interpreting them. The caller owns
 - `tests/local-url.test.js` — the local-address policy unit tests.
 - `tests/redirects.test.js` — the redirect policy unit tests.
 - `tests/error.test.js` — the boundary error factory unit tests.
+- `tests/transfer.test.js` — per-source unit coverage of `normalizeConfig` (the fail-loud startup policy) and `normalizeTransferInput` (url/method/header/body boundaries).
 - `tests/entry.test.js` — lifecycle wiring and manifest contract.
 
 ## Dependencies
@@ -103,7 +104,7 @@ The plugin publishes no events.
 | `HTTP_URL_INVALID` | Malformed or (for `request`/`stream`) non-absolute URL; for `getText`, an absolute, scheme-bearing or fragment-bearing URL. | operational |
 | `HTTP_URL_FORBIDDEN` | Plain http to a non-local address, or an https→plain-http redirect to a non-local host. | operational |
 | `HTTP_REDIRECT_FORBIDDEN` | Cross-origin redirect, more than five redirects, or an unusable Location header. | operational |
-| `HTTP_INPUT_INVALID` | Malformed input (non-object input, bad headers/body/timeout, missing `onChunk`). | operational |
+| `HTTP_INPUT_INVALID` | Malformed input (non-object input, bad headers/body/timeout, missing `onChunk`); or a present-but-unusable configuration value (timeouts, `acceptedMediaTypes`) with type `startup` and `detail.value`. | operational / startup |
 | `HTTP_NETWORK_FAILED` | The request could not reach the server, or the environment blocked it (in a browser this includes CORS blocks, which cannot be distinguished). | operational |
 | `HTTP_TIMEOUT` | The time budget ran out (whole request) or no data arrived within the idle budget (stream). | operational |
 | `HTTP_STREAM_INTERRUPTED` | The response stream was cut off before it finished. | operational |
