@@ -37,6 +37,21 @@ test('should_fail_startup_when_the_media_types_are_present_but_not_an_array', ()
   }
 });
 
+test('should_fail_startup_when_a_media_type_entry_is_not_a_non_empty_string', () => {
+  // The fail-loud policy applies to the ELEMENTS too: a non-string entry
+  // would silently coerce into a list that accepts nothing.
+  for (const bad of [[42], [null], [{}], [''], ['text/html', '']]) {
+    assert.throws(
+      () => normalizeConfig({ acceptedMediaTypes: bad }),
+      (error) => error.code === ERROR_CODES.INPUT_INVALID && error.type === 'startup',
+    );
+  }
+  assert.deepEqual(
+    normalizeConfig({ acceptedMediaTypes: ['Text/Markdown'] }).acceptedMediaTypes,
+    ['text/markdown'],
+  );
+});
+
 test('should_lowercase_the_media_type_list_when_it_is_valid', () => {
   assert.deepEqual(
     normalizeConfig({ acceptedMediaTypes: ['Text/Markdown', 'APPLICATION/JSON'] }).acceptedMediaTypes,

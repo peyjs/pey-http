@@ -2,7 +2,7 @@
 
 ## [2.1.0] - 1405-08-17
 
-Round-2, round-3, round-4 and round-5 review fixes (all unpublished; one release). MINOR: one behavior change plus a packaging-level removal.
+Round-2 through round-6 review fixes (all unpublished; one release). MINOR: one behavior change plus a packaging-level removal.
 
 ### Changed
 
@@ -16,8 +16,10 @@ Round-2, round-3, round-4 and round-5 review fixes (all unpublished; one release
 - The prepare entry passes structured startup errors through with their code and detail intact (a broken config key is diagnosable from the host log); only truly raw errors are normalized to `HTTP_TRANSPORT_UNAVAILABLE` (entry test added).
 - `tests/transfer.test.js` added: per-source unit coverage of `normalizeConfig` (fail-loud startup policy, defaults) and `normalizeTransferInput` (url/method/header/body boundaries).
 - Dedicated tests for the 301/302 POST→GET rewrite (both statuses, manual mode) and its follow-mode counterpart (the environment performs the rewrite there).
+- The body of an intermediate 30x is released BEFORE the hop-cap and policy-refusal paths too — a refused redirect (the security policy's main path) used to hold its connection until garbage collection, the same leak the follow path fixed in 2.0.1 (regression test added).
+- The fail-loud policy now covers `acceptedMediaTypes` ELEMENTS: a non-string or empty entry fails startup with `HTTP_INPUT_INVALID` instead of silently coercing into a list that accepts nothing (regression test added).
 - The dead `PLUGIN_VERSION` constant is gone (the manifest is the single version source); the `supportsManualRedirects` option is documented in both factory JSDocs; the reference structure lists `tests/transfer.test.js` and the errors table reflects the `startup` face of `HTTP_INPUT_INVALID`.
-- Dedicated 307/308 tests: a POST body is replayed on a same-origin 307/308 in manual mode (the security rationale's other half), and follow mode hands method and body untouched to the environment; `null` config values are documented and locked as "absent" (defaults); the new 301/302 test name follows the `should_..._when_...` convention (93 tests).
+- Dedicated 307/308 tests: a POST body is replayed on a same-origin 307/308 in manual mode (the security rationale's other half), and follow mode hands method and body untouched to the environment; `null` config values are documented and locked as "absent" (defaults); the new 301/302 test name follows the `should_..._when_...` convention (96 tests).
 
 ## [2.0.1] - 1405-08-15
 

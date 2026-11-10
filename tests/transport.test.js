@@ -680,6 +680,31 @@ test('should_reissue_301_and_302_of_a_post_as_get_without_body_when_redirecting_
   }
 });
 
+test('should_release_the_body_of_a_refused_cross_origin_redirect_before_the_policy_error', async () => {
+  // The rejection paths run BEFORE the old releaseBody call: a refused hop
+  // must still release its 30x body, or the connection hangs until GC.
+  let released = false;
+  const fetchImpl = createFakeFetch((url) => {
+    if (url.endsWith('/start')) {
+      return {
+        ok: false,
+        status: 302,
+        headers: new Map([['location', 'https://elsewhere.test/x']]),
+        arrayBuffer: async () => new Uint8Array().buffer,
+        body: { cancel: () => { released = true; } },
+      };
+    }
+    return textResponse('arrived');
+  });
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const final = await (await service.request({ url: 'https://api.example.com/start' })).done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'HTTP_REDIRECT_FORBIDDEN');
+  assert.equal(released, true, 'the refused hop body was released');
+});
+
 // --- lifecycle -----------------------------------------------------------
 
 test('should_reject_service_unavailable_when_called_after_deactivation', async () => {
