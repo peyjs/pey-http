@@ -71,6 +71,23 @@ test('should_hand_redirects_to_the_environment_when_manual_support_is_injected_o
   assert.equal(fetchImpl.calls.length, 1, 'no manual hop happens in follow mode');
 });
 
+test('should_leave_the_307_body_replay_to_the_environment_when_following_redirects', async () => {
+  // Follow-mode counterpart of the 307/308 rule: the plugin sends the
+  // original method and body untouched and the environment decides.
+  const redirectResponse = createTextResponse('', { status: 307, contentType: 'text/plain' });
+  redirectResponse.headers.set('location', 'https://origin.test/b');
+  const fetchImpl = createFakeFetch([redirectResponse]);
+  const { service } = createHttpService({ config: {}, fetchImpl, supportsManualRedirects: false });
+
+  const handle = await service.request({ url: 'https://origin.test/a', method: 'POST', body: 'private-text' });
+  await handle.done;
+
+  assert.equal(fetchImpl.calls[0].options.method, 'POST');
+  assert.equal(fetchImpl.calls[0].options.body, 'private-text');
+  assert.equal(fetchImpl.calls[0].options.redirect, 'follow');
+  assert.equal(fetchImpl.calls.length, 1);
+});
+
 test('should_leave_the_method_rewrite_to_the_environment_when_following_redirects', async () => {
   // Follow mode documents the counterpart of the manual loop's 301/302
   // POST→GET rule: the plugin sends the original method untouched and the

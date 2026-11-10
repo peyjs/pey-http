@@ -15,6 +15,15 @@ test('should_default_the_media_types_when_config_leaves_them_out', () => {
   assert.equal(normalizeConfig({ acceptedMediaTypes: [] }).acceptedMediaTypes.length > 0, true, 'an empty list falls back to the default');
 });
 
+test('should_treat_an_explicit_null_as_absent_when_config_values_are_normalized', () => {
+  // null = absent, by decision: both keys take the defaults instead of
+  // failing startup (documented in the reference config table).
+  const normalized = normalizeConfig({ acceptedMediaTypes: null, timeoutMs: null, streamIdleTimeoutMs: null });
+  assert.equal(normalized.acceptedMediaTypes.length > 0, true);
+  assert.equal(normalized.timeoutMs > 0, true);
+  assert.equal(normalized.streamIdleTimeoutMs > 0, true);
+});
+
 test('should_fail_startup_when_the_media_types_are_present_but_not_an_array', () => {
   // Same fail-loud policy as the timeouts: a present unusable value never
   // silently runs on the default list.

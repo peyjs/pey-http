@@ -617,7 +617,38 @@ test('should_reissue_303_as_get_without_body_when_method_carries_one', async () 
   assert.equal(fetchImpl.calls[1].options.body, undefined);
 });
 
-test('should_reissue_301_and_302_of_a_post_as_get_without_body_in_manual_mode', async () => {
+test('should_keep_method_and_body_when_a_post_is_redirected_with_307_and_308_in_manual_mode', async () => {
+  // The security rationale of the redirect policy rests on 307/308: a
+  // private body IS replayed on a same-origin 307/308 — the manual loop
+  // must not rewrite the method or drop the body for them.
+  for (const status of [307, 308]) {
+    const fetchImpl = createFakeFetch((url, options) => {
+      if (url.endsWith('/start')) {
+        return {
+          ok: false,
+          status,
+          headers: new Map([['location', '/next']]),
+          arrayBuffer: async () => new Uint8Array().buffer,
+        };
+      }
+      return textResponse('arrived');
+    });
+    const { service } = createHttpService({ config: {}, fetchImpl });
+
+    const final = await (await service.request({
+      url: 'https://api.example.com/start',
+      method: 'POST',
+      body: 'private-text',
+    })).done;
+
+    assert.equal(final.ending, 'completed', String(status));
+    assert.equal(fetchImpl.calls[1].options.method, 'POST', String(status));
+    assert.equal(fetchImpl.calls[1].options.body, 'private-text', String(status));
+    assert.equal(fetchImpl.calls[1].url, 'https://api.example.com/next', String(status));
+  }
+});
+
+test('should_reissue_301_and_302_of_a_post_as_get_without_body_when_redirecting_in_manual_mode', async () => {
   // The manual loop mirrors the platform's follow behavior: a 301/302
   // answered for POST re-issues as GET without a body, so a private body is
   // never replayed onto the redirected address and both redirect modes
