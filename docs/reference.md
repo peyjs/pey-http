@@ -57,7 +57,7 @@ if (final.ending === 'completed') {
 ```
 
 - `url` must be an absolute `https` URL, or plain `http` to one of the defined local addresses (see below).
-- `headers` values are stringified as given; the plugin never adds, removes or logs a header.
+- `headers` values are stringified as given; the plugin never adds, removes or logs a header. Header NAMES and the `method` must be valid HTTP tokens (RFC 7230) and values must not contain line breaks — malformed ones are refused with `HTTP_INPUT_INVALID` before anything is sent (the error names the header's position, never its content); a declared `__proto__` header is kept like any other.
 
 ### `stream(input, { onChunk })`
 

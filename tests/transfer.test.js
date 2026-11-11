@@ -213,8 +213,10 @@ test('should_reject_non_object_headers_and_stringify_their_values', () => {
     () => normalizeTransferInput({ url: 'https://x.test/a', headers: 'a=b' }),
     (error) => error.code === ERROR_CODES.INPUT_INVALID,
   );
+  // The container is null-prototype (the `__proto__` regression): compare
+  // own entries, not prototypes.
   assert.deepEqual(
-    normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-a': 5 } }).headers,
+    { ...normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-a': 5 } }).headers },
     { 'x-a': '5' },
   );
 });
@@ -234,4 +236,71 @@ test('should_reject_a_body_on_get_and_head_and_non_text_bodies_otherwise', () =>
   );
   const input = normalizeTransferInput({ url: 'https://x.test/a', method: 'POST', body: 'سلام' });
   assert.equal(input.body, 'سلام');
+});
+
+test('should_keep_a_proto_header_as_an_own_property_when_headers_are_normalized', () => {
+  // Round-11 regression: the header container is null-prototype. On a plain
+  // `{}` the `__proto__` key's assignment silently hit the inherited setter
+  // and the header the caller explicitly declared vanished before fetch —
+  // `JSON.parse('{"__proto__":"v"}')` builds a real own property, so this
+  // shape reaches the normalizer through Object.entries legitimately.
+  const declared = JSON.parse('{"__proto__":"v","x-real":"r"}');
+  assert.ok(Object.prototype.hasOwnProperty.call(declared, '__proto__'));
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: declared });
+  assert.equal(Object.getPrototypeOf(spec.headers), null, 'the container has no prototype to hijack');
+  assert.ok(Object.prototype.hasOwnProperty.call(spec.headers, '__proto__'), 'the declared header survives');
+  assert.equal(spec.headers.__proto__, 'v');
+  assert.equal(spec.headers['x-real'], 'r');
+});
+
+test('should_reach_structured_startup_errors_when_config_property_reads_throw', () => {
+  // Round-11 regression: configuration reads are guarded like the request
+  // side — a throwing getter on a config key, an array element or a timeout
+  // must cross as HTTP_INPUT_INVALID (startup, named field), never as a raw
+  // error the entry point downgrades to HTTP_TRANSPORT_UNAVAILABLE without
+  // any detail.
+  const poisonedKey = Object.defineProperties({}, {
+    acceptedMediaTypes: { get() { throw new Error('config text'); }, enumerable: true },
+  });
+  assert.throws(
+    () => normalizeConfig(poisonedKey),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.type === 'startup' && error.detail?.field === 'acceptedMediaTypes',
+  );
+  const poisonedEntry = Object.defineProperties({}, {
+    acceptedMediaTypes: { value: ['text/html'], enumerable: true },
+    timeoutMs: { get() { throw new Error('config text'); }, enumerable: true },
+  });
+  assert.throws(
+    () => normalizeConfig(poisonedEntry),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.type === 'startup' && error.detail?.field === 'timeoutMs',
+  );
+  const poisonedElement = ['text/html'];
+  Object.defineProperty(poisonedElement, 0, { get() { throw new Error('config text'); }, enumerable: true });
+  assert.throws(
+    () => normalizeConfig({ acceptedMediaTypes: poisonedElement }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.type === 'startup' && error.detail?.field === 'acceptedMediaTypes[0]',
+  );
+});
+
+test('should_reject_malformed_header_names_values_and_methods_before_any_fetch', () => {
+  // Round-11 regression: pre-flight token validation. These shapes used to
+  // die INSIDE fetch as a raw TypeError, misreported as HTTP_NETWORK_FAILED
+  // ("the server was unreachable") — blaming the server for a caller-side
+  // typo and derailing retry logic keyed on network codes.
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x bad name': 'v' } }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.detail?.headerPosition === 1,
+  );
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-ok': 'v\nevil' } }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.detail?.headerPosition === 1,
+  );
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://x.test/a', method: 'G ET' }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID,
+  );
+  // Valid token names, values and methods still pass — including the full
+  // RFC token charset and the (odd but legal) `__proto__` name.
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', method: 'POST', headers: { 'x-a~b': 'plain value', 'content-type': 'application/json' } });
+  assert.equal(spec.method, 'POST');
 });

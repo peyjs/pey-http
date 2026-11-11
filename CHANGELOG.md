@@ -2,7 +2,7 @@
 
 ## [2.1.0] - 1405-08-17
 
-Round-2 through round-7 review fixes (all unpublished; one release). MINOR: one behavior change plus a packaging-level removal.
+Round-2 through round-11 review fixes (all unpublished; one release). MINOR: one behavior change plus a packaging-level removal.
 
 ### Changed
 
@@ -13,6 +13,7 @@ Round-2 through round-7 review fixes (all unpublished; one release). MINOR: one 
 
 ### Fixed
 
+- Round 11, three seams: (1) the headers container is NULL-PROTOTYPE — on a plain `{}`, a caller-declared `__proto__` header (an odd but legal RFC token name, e.g. arriving via `JSON.parse`) silently hit the inherited setter and VANISHED before fetch, against the documented "never removes a header" contract; every assignment is an own property now (regression test locks the round trip). (2) Configuration property reads are guarded like the request side — a throwing getter on `acceptedMediaTypes`, on an array element or on a timeout crossed as a raw error the entry point downgraded to a detail-less `HTTP_TRANSPORT_UNAVAILABLE`; now each read maps to `HTTP_INPUT_INVALID` (startup) naming the broken key (three tests). (3) Pre-flight token validation of the header NAMES, header VALUES (line breaks) and the METHOD: these shapes used to die inside fetch as a raw `TypeError` misreported as `HTTP_NETWORK_FAILED` ("the server was unreachable") — blaming the server for a caller-side typo and derailing retry logic; they are refused with `HTTP_INPUT_INVALID` before anything is sent, and error messages carry the header's POSITION, never its name or value (three tests; 110 total).
 - The prepare entry passes structured startup errors through with their code and detail intact (a broken config key is diagnosable from the host log); only truly raw errors are normalized to `HTTP_TRANSPORT_UNAVAILABLE` (entry test added).
 - `tests/transfer.test.js` added: per-source unit coverage of `normalizeConfig` (fail-loud startup policy, defaults) and `normalizeTransferInput` (url/method/header/body boundaries).
 - Dedicated tests for the 301/302 POST→GET rewrite (both statuses, manual mode) and its follow-mode counterpart (the environment performs the rewrite there).

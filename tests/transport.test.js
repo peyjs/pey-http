@@ -193,7 +193,7 @@ test('should_pass_method_headers_body_when_request_is_sent', async () => {
   })).done;
 
   assert.equal(fetchImpl.calls[0].options.method, 'POST');
-  assert.deepEqual(fetchImpl.calls[0].options.headers, { 'content-type': 'application/json' });
+  assert.deepEqual({ ...fetchImpl.calls[0].options.headers }, { 'content-type': 'application/json' });
   assert.equal(fetchImpl.calls[0].options.body, '{"a":1}');
 });
 
