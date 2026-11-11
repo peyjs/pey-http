@@ -37,6 +37,15 @@ test('should_fail_startup_when_the_media_types_are_present_but_not_an_array', ()
   }
 });
 
+test('should_trim_media_type_entries_when_normalizing_the_list', () => {
+  // extractMediaType compares against a trimmed header value: a padded
+  // entry must be trimmed at intake, or the list silently accepts nothing.
+  assert.deepEqual(
+    normalizeConfig({ acceptedMediaTypes: [' text/html '] }).acceptedMediaTypes,
+    ['text/html'],
+  );
+});
+
 test('should_fail_startup_when_a_media_type_entry_is_not_a_non_empty_string', () => {
   // The fail-loud policy applies to the ELEMENTS too: a non-string entry
   // would silently coerce into a list that accepts nothing.

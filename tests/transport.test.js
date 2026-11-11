@@ -705,6 +705,52 @@ test('should_release_the_body_of_a_refused_cross_origin_redirect_before_the_poli
   assert.equal(released, true, 'the refused hop body was released');
 });
 
+test('should_release_every_body_when_a_redirect_loop_exceeds_the_hop_cap', async () => {
+  // The release-before-rejection rule covers the hop-cap path: every
+  // surplus hop's 30x body is released, none holds a connection to GC.
+  let released = 0;
+  const loopResponse = () => ({
+    ok: false,
+    status: 302,
+    headers: new Map([['location', '/next']]),
+    arrayBuffer: async () => new Uint8Array().buffer,
+    body: { cancel: () => { released += 1; } },
+  });
+  const fetchImpl = createFakeFetch(() => loopResponse());
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const final = await (await service.request({ url: 'https://api.example.com/start' })).done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'HTTP_REDIRECT_FORBIDDEN');
+  assert.ok(released >= 5, `every surplus hop body was released (released: ${released})`);
+});
+
+test('should_release_the_body_when_a_redirect_location_is_unusable', async () => {
+  // An unusable Location (plain-http public target) refuses the hop — the
+  // 30x body must still be released before the error.
+  let released = false;
+  const fetchImpl = createFakeFetch((url) => {
+    if (url.endsWith('/start')) {
+      return {
+        ok: false,
+        status: 302,
+        headers: new Map([['location', 'http://public.example.com/x']]),
+        arrayBuffer: async () => new Uint8Array().buffer,
+        body: { cancel: () => { released = true; } },
+      };
+    }
+    return textResponse('arrived');
+  });
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const final = await (await service.request({ url: 'https://api.example.com/start' })).done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'HTTP_URL_FORBIDDEN');
+  assert.equal(released, true, 'the refused hop body was released');
+});
+
 // --- lifecycle -----------------------------------------------------------
 
 test('should_reject_service_unavailable_when_called_after_deactivation', async () => {

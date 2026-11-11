@@ -2,7 +2,7 @@
 
 ## [2.1.0] - 1405-08-17
 
-Round-2 through round-6 review fixes (all unpublished; one release). MINOR: one behavior change plus a packaging-level removal.
+Round-2 through round-7 review fixes (all unpublished; one release). MINOR: one behavior change plus a packaging-level removal.
 
 ### Changed
 
@@ -19,6 +19,7 @@ Round-2 through round-6 review fixes (all unpublished; one release). MINOR: one 
 - The body of an intermediate 30x is released BEFORE the hop-cap and policy-refusal paths too — a refused redirect (the security policy's main path) used to hold its connection until garbage collection, the same leak the follow path fixed in 2.0.1 (regression test added).
 - The fail-loud policy now covers `acceptedMediaTypes` ELEMENTS: a non-string or empty entry fails startup with `HTTP_INPUT_INVALID` instead of silently coercing into a list that accepts nothing (regression test added).
 - The dead `PLUGIN_VERSION` constant is gone (the manifest is the single version source); the `supportsManualRedirects` option is documented in both factory JSDocs; the reference structure lists `tests/transfer.test.js` and the errors table reflects the `startup` face of `HTTP_INPUT_INVALID`.
+- `acceptedMediaTypes` entries are TRIMMED at intake (matching the header-side comparison): a padded entry like `' text/html '` previously passed validation yet matched no real Content-Type, silently making `getText` refuse everything; the Config table documents the element-level rule; two more release-before-rejection tests lock the hop-cap and unusable-Location paths (99 tests).
 - Dedicated 307/308 tests: a POST body is replayed on a same-origin 307/308 in manual mode (the security rationale's other half), and follow mode hands method and body untouched to the environment; `null` config values are documented and locked as "absent" (defaults); the new 301/302 test name follows the `should_..._when_...` convention (96 tests).
 
 ## [2.0.1] - 1405-08-15
