@@ -8,6 +8,32 @@ import test from 'node:test';
 import { normalizeConfig, normalizeTransferInput } from '../lib/transfer.js';
 import { ERROR_CODES } from '../lib/constants.js';
 
+// --- poisoned per-request input -------------------------------------------
+
+test('should_reach_the_structured_input_error_when_the_request_method_cannot_render_itself', () => {
+  // The per-request path has no prepare-time network in front of it: a
+  // poisoned toString on the method must cross as HTTP_INPUT_INVALID, never
+  // as a raw code-less rejection carrying the caller's own message.
+  const poisoned = { toString() { throw new Error('caller text'); } };
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://example.com/a', method: poisoned }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID
+      && error.type === 'operational'
+      && error.detail?.value === '[unrenderable value]',
+  );
+});
+
+test('should_reach_the_structured_input_error_when_a_header_value_cannot_render_itself', () => {
+  const poisoned = { toString() { throw new Error('caller text'); } };
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://example.com/a', headers: { 'x-bad': poisoned } }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID
+      && error.type === 'operational'
+      && error.detail?.header === 'x-bad'
+      && error.detail?.value === '[unrenderable value]',
+  );
+});
+
 // --- normalizeConfig ------------------------------------------------------
 
 test('should_default_the_media_types_when_config_leaves_them_out', () => {
@@ -61,18 +87,23 @@ test('should_fail_startup_when_a_media_type_entry_is_not_a_non_empty_string', ()
   );
 });
 
-test('should_fail_startup_when_a_media_type_entry_carries_parameters', () => {
-  // extractMediaType compares the header's parameter-free media type: an
-  // entry like 'text/html; charset=utf-8' — the most common way servers
-  // WRITE a Content-Type — would pass validation yet match nothing, the
-  // same silent "list that accepts nothing" class as a blank entry.
-  for (const bad of [['text/html; charset=utf-8'], ['text/html', 'application/json;q=0.9']]) {
+test('should_fail_startup_when_a_media_type_entry_cannot_ever_match_the_comparison_side', () => {
+  // extractMediaType compares the header's bare type/subtype: ANY entry
+  // that is not a bare token pair — parameters ('text/html; charset=utf-8',
+  // the most common way servers WRITE a Content-Type), inner spaces
+  // ('text / html'), full-width look-alikes from a Persian IME — would
+  // pass validation yet match nothing, the same silent "list that accepts
+  // nothing" class as a blank entry. A positive pattern rejects them all.
+  for (const bad of ['text/html; charset=utf-8', 'text / html', 'text/html；charset=utf-8', 'texthtml', '/html', 'text/']) {
     assert.throws(
-      () => normalizeConfig({ acceptedMediaTypes: bad }),
+      () => normalizeConfig({ acceptedMediaTypes: [bad] }),
       (error) => error.code === ERROR_CODES.INPUT_INVALID
         && error.type === 'startup'
-        && error.detail?.value === bad.find((type) => type.includes(';')),
+        && error.detail?.value === bad,
     );
+  }
+  for (const good of ['text/html', 'application/vnd.api+json', 'TEXT/PLAIN']) {
+    normalizeConfig({ acceptedMediaTypes: [good] });
   }
 });
 
