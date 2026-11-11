@@ -379,6 +379,17 @@ test('should_map_unknown_throwables_to_request_failed_when_fetch_throws', async 
 
 // --- streaming -----------------------------------------------------------
 
+test('should_reach_the_structured_input_error_when_the_onChunk_getter_throws', async () => {
+  // Reading handlers.onChunk runs a caller getter: a throwing one must be
+  // structured HTTP_INPUT_INVALID, never a raw rejection carrying the
+  // caller's text (round-10 P1, third poisoned-read site).
+  const { service } = createHttpService({ config: {}, fetchImpl: async () => { throw new Error('unused'); } });
+  await assert.rejects(
+    () => service.stream({ url: 'https://example.com/a' }, { get onChunk() { throw new Error('caller text'); } }),
+    (error) => error.code === 'HTTP_INPUT_INVALID' && error.type === 'operational',
+  );
+});
+
 test('should_deliver_chunks_in_order_when_the_stream_completes', async (t) => {
   // Mocked clock: the fake reader paces its chunks with setTimeout, so the
   // delivery order is deterministic without wall-clock sleeps.

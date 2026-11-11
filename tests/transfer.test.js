@@ -10,6 +10,41 @@ import { ERROR_CODES } from '../lib/constants.js';
 
 // --- poisoned per-request input -------------------------------------------
 
+test('should_reach_the_structured_input_error_when_a_request_field_getter_throws', () => {
+  // Reading the input runs caller getters: a throwing getter on any of the
+  // five fields is the same poisoned-input class as a poisoned toString —
+  // structured, never a raw code-less rejection carrying the caller's text.
+  const poison = (field) => {
+    const input = field === 'url' ? {} : { url: 'https://example.com/a' };
+    Object.defineProperty(input, field, { get() { throw new Error('caller text'); }, enumerable: true });
+    return input;
+  };
+  // Every field's read is guarded — including url itself, whose read runs
+  // BEFORE the URL validation.
+  for (const field of ['url', 'method', 'headers', 'body', 'timeoutMs']) {
+    assert.throws(
+      () => normalizeTransferInput(poison(field)),
+      (error) => error.code === ERROR_CODES.INPUT_INVALID && error.type === 'operational',
+    );
+  }
+});
+
+test('should_reach_the_structured_input_error_when_the_headers_object_enumeration_throws', () => {
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://example.com/a', headers: { get 'x-a'() { throw new Error('caller text'); }, 'x-b': 'v' } }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.type === 'operational',
+  );
+});
+
+test('should_accept_media_type_entries_with_the_full_rfc_token_charset', () => {
+  // The positive pattern uses the FULL RFC 7230 token charset: entries with
+  // %-encoding, ~, *, | or ` in experimental type names can genuinely match
+  // the comparison side and must not be refused (round-10 P2).
+  for (const good of ['application/x-a~b', 'application/x-a*b', 'application/vnd|x', 'application/x-`p', 'application/x-%41']) {
+    normalizeConfig({ acceptedMediaTypes: [good] });
+  }
+});
+
 test('should_reach_the_structured_input_error_when_the_request_method_cannot_render_itself', () => {
   // The per-request path has no prepare-time network in front of it: a
   // poisoned toString on the method must cross as HTTP_INPUT_INVALID, never
