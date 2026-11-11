@@ -61,6 +61,42 @@ test('should_fail_startup_when_a_media_type_entry_is_not_a_non_empty_string', ()
   );
 });
 
+test('should_fail_startup_when_a_media_type_entry_carries_parameters', () => {
+  // extractMediaType compares the header's parameter-free media type: an
+  // entry like 'text/html; charset=utf-8' — the most common way servers
+  // WRITE a Content-Type — would pass validation yet match nothing, the
+  // same silent "list that accepts nothing" class as a blank entry.
+  for (const bad of [['text/html; charset=utf-8'], ['text/html', 'application/json;q=0.9']]) {
+    assert.throws(
+      () => normalizeConfig({ acceptedMediaTypes: bad }),
+      (error) => error.code === ERROR_CODES.INPUT_INVALID
+        && error.type === 'startup'
+        && error.detail?.value === bad.find((type) => type.includes(';')),
+    );
+  }
+});
+
+test('should_reach_the_structured_input_error_when_a_configured_value_cannot_render_itself', () => {
+  // The fail-loud path renders config values into detail.value: a poisoned
+  // toString must not break THAT path — the raw code-less error would be
+  // downgraded to HTTP_TRANSPORT_UNAVAILABLE and lose the code, type and
+  // detail the host needs to find the offending key.
+  const poisoned = { toString() { throw new Error('boom'); } };
+  for (const config of [
+    { acceptedMediaTypes: [poisoned] },
+    { acceptedMediaTypes: poisoned },
+    { timeoutMs: poisoned },
+    { streamIdleTimeoutMs: poisoned },
+  ]) {
+    assert.throws(
+      () => normalizeConfig(config),
+      (error) => error.code === ERROR_CODES.INPUT_INVALID
+        && error.type === 'startup'
+        && error.detail?.value === '[unrenderable value]',
+    );
+  }
+});
+
 test('should_lowercase_the_media_type_list_when_it_is_valid', () => {
   assert.deepEqual(
     normalizeConfig({ acceptedMediaTypes: ['Text/Markdown', 'APPLICATION/JSON'] }).acceptedMediaTypes,

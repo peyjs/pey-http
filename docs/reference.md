@@ -120,7 +120,7 @@ The plugin publishes no events.
 |---|---|---|---|---|
 | `timeoutMs` | `number` | No | `60000` | Default whole-request timeout in milliseconds; per-request `timeoutMs` overrides it (and is the idle budget for streams). |
 | `streamIdleTimeoutMs` | `number` | No | `60000` | Default no-data interval budget for streams. |
-| `acceptedMediaTypes` | `string[]` | No | `['text/markdown', 'text/plain', 'text/html']` | `getText` content-type allow-list (an absent Content-Type is always accepted). A present but non-array value — or an array with a non-string or blank element — fails startup with `HTTP_INPUT_INVALID`; entries are trimmed and lowercased on intake (never silently replaced). An explicit `null` reads as absent and takes the default (locked by tests). |
+| `acceptedMediaTypes` | `string[]` | No | `['text/markdown', 'text/plain', 'text/html']` | `getText` content-type allow-list (an absent Content-Type is always accepted). A present but non-array value — or an array with a non-string, blank, or parameter-carrying element (`'text/html; charset=utf-8'` can never match the parameter-free comparison side) — fails startup with `HTTP_INPUT_INVALID`; entries are trimmed and lowercased on intake (never silently replaced). An explicit `null` reads as absent and takes the default (locked by tests). |
 
 ## Business Rules
 
