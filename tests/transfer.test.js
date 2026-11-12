@@ -411,19 +411,45 @@ test('should_reject_a_symbol_header_value_as_not_a_string_pair_when_read_from_a_
   assert.equal(spec.headers['x-n'], '5');
 });
 
-test('should_refuse_a_forged_map_brand_without_its_internal_slot_when_the_tag_lies', () => {
-  // Round-16 regression: a plain object with a forged `Symbol.toStringTag`
-  // passed the brand check and steered its OWN entries() method into the
-  // normalizer (caller code inside the container read). The brand is
-  // confirmed by a cheap internal-slot probe — a real Map carries a
-  // numeric `size`; the forgery does not, and falls to the plain-object
-  // path (own properties only).
-  let entriesCalled = false;
-  const forged = { [Symbol.toStringTag]: 'Map', size: 'not-a-number', entries: () => { entriesCalled = true; return [['x-forged', 'v']]; } };
-  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: forged });
-  assert.equal(entriesCalled, false, 'the forged entries() method never runs inside the normalizer');
-  assert.equal(spec.headers['x-forged'], undefined, 'no injected entry crosses');
-  // The forged object is read as a PLAIN object: its own enumerable props
-  // are its declared headers, like any other record.
-  assert.equal(spec.headers.size, 'not-a-number');
+test('should_never_run_a_forged_container_entries_when_any_bypass_shape_lies_about_its_slot', async () => {
+  // Round-16/17 regression: a forged `Symbol.toStringTag` used to steer the
+  // forger's OWN entries() into the normalizer. The slot confirmation now
+  // reads the BUILT-IN getter via Reflect — all three bypass shapes fall
+  // to the plain-object path with ZERO entries() invocations: (1) a plain
+  // numeric `size` property, (2) a lying `size` GETTER (whose read used to
+  // execute caller code inside the probe itself), (3) a forged Headers
+  // brand with function-shaped entries/forEach.
+  const forgedShapes = [
+    { tag: 'Map', build: () => ({ [Symbol.toStringTag]: 'Map', size: 1, entries: () => [['x-forged', 'v']] }) },
+    { tag: 'Map-getter', build: () => ({ [Symbol.toStringTag]: 'Map', get size() { throw new Error('getter ran'); }, entries: () => [['x-forged', 'v']] }) },
+    { tag: 'Headers', build: () => ({ [Symbol.toStringTag]: 'Headers', entries: () => [['x-forged', 'v']], forEach: () => {} }) },
+  ];
+  for (const shape of forgedShapes) {
+    let entriesCalled = false;
+    const forged = shape.build();
+    const originalEntries = forged.entries;
+    // Single-line tracker: a multi-line function SOURCE would trip the
+    // field-content check once the object falls to the plain-object path.
+    forged.entries = (...args) => (entriesCalled = true, originalEntries.apply(forged, args));
+    let error = null;
+    let spec = null;
+    try {
+      spec = normalizeTransferInput({ url: 'https://x.test/a', headers: forged });
+    } catch (caught) {
+      error = caught;
+    }
+    assert.equal(entriesCalled, false, `the forged entries() never runs (${shape.tag})`);
+    if (error !== null) {
+      // A plain-object read may run the object's own throwing getter —
+      // the documented structured containment (round 10).
+      assert.equal(error.code, ERROR_CODES.INPUT_INVALID, shape.tag);
+    } else {
+      assert.equal(spec.headers['x-forged'], undefined, `no injected entry crosses (${shape.tag})`);
+    }
+  }
+  // A REAL cross-realm Map still passes (the round-15 case stays open).
+  const vm = await import('node:vm');
+  const crossRealmMap = vm.runInNewContext('new Map([["x-e", "5"]])');
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: crossRealmMap });
+  assert.equal(spec.headers['x-e'], '5');
 });
