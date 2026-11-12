@@ -394,20 +394,6 @@ test('should_read_a_cross_realm_map_through_the_brand_check_when_the_host_spans_
 
 test('should_reject_a_symbol_header_value_as_not_a_string_pair_when_read_from_a_map', () => {
   // Round-15 regression: the pair guard checked only the NAME half — a
-  // Symbol VALUE (reachable only through a Map) coerced silently to the
-  // lying string 'Symbol(v)' on the wire.
-  let error;
-  try {
-    normalizeTransferInput({ url: 'https://x.test/a', headers: new Map([['x-a', Symbol('v')]]) });
-  } catch (caught) {
-    error = caught;
-  }
-  assert.equal(error?.code, ERROR_CODES.INPUT_INVALID);
-  assert.equal(error?.detail?.headerPosition, 1);
-});
-
-test('should_reject_a_symbol_header_value_as_not_a_string_pair_when_read_from_a_map', () => {
-  // Round-15 regression: the pair guard checked only the NAME half — a
   // Symbol VALUE (reachable through a Map, and through a plain object's
   // own property) coerced silently to the lying string 'Symbol(v)' on the
   // wire, while the documented contract stringifies numbers and objects
@@ -423,4 +409,21 @@ test('should_reject_a_symbol_header_value_as_not_a_string_pair_when_read_from_a_
   // The documented stringification of ordinary non-strings is untouched.
   const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-n': 5, 'x-s': 'plain' } });
   assert.equal(spec.headers['x-n'], '5');
+});
+
+test('should_refuse_a_forged_map_brand_without_its_internal_slot_when_the_tag_lies', () => {
+  // Round-16 regression: a plain object with a forged `Symbol.toStringTag`
+  // passed the brand check and steered its OWN entries() method into the
+  // normalizer (caller code inside the container read). The brand is
+  // confirmed by a cheap internal-slot probe — a real Map carries a
+  // numeric `size`; the forgery does not, and falls to the plain-object
+  // path (own properties only).
+  let entriesCalled = false;
+  const forged = { [Symbol.toStringTag]: 'Map', size: 'not-a-number', entries: () => { entriesCalled = true; return [['x-forged', 'v']]; } };
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: forged });
+  assert.equal(entriesCalled, false, 'the forged entries() method never runs inside the normalizer');
+  assert.equal(spec.headers['x-forged'], undefined, 'no injected entry crosses');
+  // The forged object is read as a PLAIN object: its own enumerable props
+  // are its declared headers, like any other record.
+  assert.equal(spec.headers.size, 'not-a-number');
 });
