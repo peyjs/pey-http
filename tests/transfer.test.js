@@ -64,9 +64,33 @@ test('should_reach_the_structured_input_error_when_a_header_value_cannot_render_
     () => normalizeTransferInput({ url: 'https://example.com/a', headers: { 'x-bad': poisoned } }),
     (error) => error.code === ERROR_CODES.INPUT_INVALID
       && error.type === 'operational'
-      && error.detail?.header === 'x-bad'
+      // Round-12 privacy fix: the NAME never enters the error (an
+      // `authorization` name in a host log is still an authentication
+      // leak) — the header's POSITION carries the diagnosis, same as the
+      // token rejections.
+      && error.detail?.headerPosition === 1
+      && error.detail?.header === undefined
       && error.detail?.value === '[unrenderable value]',
   );
+});
+
+test('should_refuse_control_characters_and_non_latin1_values_before_any_fetch', () => {
+  // Round-12 regression: the round-11 value check only covered line
+  // breaks. A NUL byte or Persian header text passed it, died INSIDE fetch
+  // as a raw TypeError, and got misreported as HTTP_NETWORK_FAILED — the
+  // server blamed for a caller-side typo. The field-content set (TAB +
+  // printable ASCII + obs-text) is what fetch itself accepts; anything
+  // else is refused with the structured code before a single byte leaves.
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-ok': 'v\x00evil' } }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.detail?.headerPosition === 1,
+  );
+  assert.throws(
+    () => normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-ok': 'سلام' } }),
+    (error) => error.code === ERROR_CODES.INPUT_INVALID && error.detail?.headerPosition === 1,
+  );
+  // TAB and the obs-text high range stay legal.
+  normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-ok': 'col1\tcol2', 'x-sig': 'caf\xe9' } });
 });
 
 // --- normalizeConfig ------------------------------------------------------
