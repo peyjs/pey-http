@@ -875,3 +875,38 @@ test('should_report_request_failed_when_chunk_handler_throws', async () => {
   assert.equal(final.error.code, 'HTTP_REQUEST_FAILED', 'a handler bug is not a stream interruption');
   assert.deepEqual(final.error.detail, { stage: 'chunk-handler' });
 });
+
+test('should_report_request_failed_and_never_reject_unhandled_when_an_async_chunk_handler_fails', async () => {
+  // Round-13 P1 regression: an ASYNC receiving handler reports its failure
+  // as a rejected Promise, not a throw. The old call ignored the return
+  // value, so the rejection escaped as unhandledRejection (Node's default
+  // mode KILLS the host process) while the stream reported `completed`.
+  // A thenable failure takes the same documented chunk-handler path.
+  const unhandled = [];
+  const previousListeners = process.listeners('unhandledRejection');
+  process.removeAllListeners('unhandledRejection');
+  process.on('unhandledRejection', (reason) => unhandled.push(reason));
+  try {
+    const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('b'), bytes('c')]));
+    const { service } = createHttpService({ config: {}, fetchImpl });
+
+    const final = await (
+      await service.stream(
+        { url: 'https://api.example.com/v1/x' },
+        { onChunk: async () => { throw new Error('async consumer bug'); } },
+      )
+    ).done;
+    // Let any stray rejection surface before asserting.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(final.ending, 'interrupted');
+    assert.equal(final.error.code, 'HTTP_REQUEST_FAILED', 'an async handler bug is the same handler bug');
+    assert.deepEqual(final.error.detail, { stage: 'chunk-handler' });
+    assert.equal(unhandled.length, 0, 'no unhandledRejection may escape the plugin');
+  } finally {
+    process.removeAllListeners('unhandledRejection');
+    for (const listener of previousListeners) {
+      process.on('unhandledRejection', listener);
+    }
+  }
+});

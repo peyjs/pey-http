@@ -328,3 +328,26 @@ test('should_reject_malformed_header_names_values_and_methods_before_any_fetch',
   const spec = normalizeTransferInput({ url: 'https://x.test/a', method: 'POST', headers: { 'x-a~b': 'plain value', 'content-type': 'application/json' } });
   assert.equal(spec.method, 'POST');
 });
+
+test('should_accept_the_full_obs_text_range_when_header_values_are_validated', () => {
+  // Round-13 regression: obs-text per RFC 7230 is the WHOLE %x80-FF range
+  // and undici's own header validator admits it (C1 controls included) —
+  // the round-12 pattern cut the 0x80-0x9F half and refused values that
+  // genuinely cross the wire.
+  normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-sig': 'a\x85b', 'x-sel': 'caf\xe9' } });
+});
+
+test('should_read_a_platform_headers_container_when_the_host_passes_one', () => {
+  // Round-13 regression: a `Headers` (or `Map`) instance keeps its entries
+  // in internal slots — `Object.entries` saw NOTHING and the request was
+  // silently sent with ZERO headers, the same silent declared-data-loss
+  // class the `__proto__` fix closed. Containers exposing `entries()` are
+  // read through it.
+  const container = new Headers({ 'x-a': '1', 'x-b': '2' });
+  assert.equal(Object.entries(container).length, 0, 'the platform container really hides its entries from Object.entries');
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: container });
+  assert.equal(spec.headers['x-a'], '1');
+  assert.equal(spec.headers['x-b'], '2');
+  const mapped = normalizeTransferInput({ url: 'https://x.test/a', headers: new Map([['x-c', '3']]) });
+  assert.equal(mapped.headers['x-c'], '3');
+});
