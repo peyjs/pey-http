@@ -453,3 +453,25 @@ test('should_never_run_a_forged_container_entries_when_any_bypass_shape_lies_abo
   const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: crossRealmMap });
   assert.equal(spec.headers['x-e'], '5');
 });
+
+test('should_report_the_loud_structured_error_when_a_proxy_wraps_a_real_container', async () => {
+  // Round-18 P1 regression: the round-17 slot probe's inner catch swallowed
+  // the built-in getter's failure for a transparent Proxy over a REAL
+  // container (the proxy itself has no internal slots) and silently fell to
+  // the plain-object path — Object.entries sees nothing inside the Proxy,
+  // so the request left with ZERO headers (the silent declared-data-loss
+  // class). A positive brand whose slot read fails now re-throws into the
+  // outer guard: the loud structured error, never a silent empty request.
+  const vm = await import('node:vm');
+  const crossRealm = vm.runInNewContext(`
+    const map = new Map([['x-real', '5']]);
+    new Proxy(map, {});
+  `);
+  let error = null;
+  try {
+    normalizeTransferInput({ url: 'https://x.test/a', headers: crossRealm });
+  } catch (caught) {
+    error = caught;
+  }
+  assert.equal(error?.code, ERROR_CODES.INPUT_INVALID, 'the loud structured error — never a silent zero-header request');
+});
