@@ -910,3 +910,56 @@ test('should_report_request_failed_and_never_reject_unhandled_when_an_async_chun
     }
   }
 });
+
+test('should_deliver_the_next_chunk_only_after_the_async_handler_settles_when_backpressure_is_applied', async () => {
+  // Round-13 semantics, locked by round 14: an async handler's promise is
+  // awaited, so the next chunk is read only after it settles — the
+  // handler applies real backpressure (documented in the reference).
+  const handled = [];
+  let resolveFirst = null;
+  const fetchImpl = createFakeFetch(streamResponder([bytes('a'), bytes('b'), bytes('c')]));
+  const { service } = createHttpService({ config: {}, fetchImpl });
+
+  const handle = await service.stream(
+    { url: 'https://api.example.com/v1/x' },
+    {
+      onChunk: (chunk) => {
+        handled.push(new TextDecoder().decode(chunk));
+        if (handled.length === 1) {
+          return new Promise((resolve) => { resolveFirst = resolve; });
+        }
+      },
+    },
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(handled, ['a'], 'chunk two waits behind the unsettled handler promise');
+  resolveFirst();
+  const final = await handle.done;
+
+  assert.equal(final.ending, 'completed');
+  assert.deepEqual(handled, ['a', 'b', 'c'], 'the stream resumed in order after the settle');
+});
+
+test('should_end_interrupted_by_the_handler_budget_when_a_thenable_never_settles', async () => {
+  // Round-14 regression: a never-settling handler promise used to hang
+  // `done` FOREVER — the idle timer and abort only reach reader.read(),
+  // and neither cancel() nor deactivate() could settle the transfer. The
+  // handler await now races its own budget (the request timeoutMs), so the
+  // transfer ends interrupted with the handler-stage code.
+  const fetchImpl = createFakeFetch(streamResponder([bytes('a')]));
+  const { service } = createHttpService({ config: { streamIdleTimeoutMs: 50 }, fetchImpl });
+
+  const final = await (
+    await service.stream(
+      { url: 'https://api.example.com/v1/x' },
+      { onChunk: () => new Promise(() => {}) },
+    )
+  ).done;
+
+  // The idle timer aborts on its budget; the abort settles the handler
+  // race, and the timedOut flag maps the ending to HTTP_TIMEOUT — a
+  // bounded ending, never a silent hang.
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'HTTP_TIMEOUT');
+});

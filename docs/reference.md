@@ -61,7 +61,7 @@ if (final.ending === 'completed') {
 
 ### `stream(input, { onChunk })`
 
-Same input; on a success status the body is delivered as ordered raw `Uint8Array` chunks through `onChunk`, undecoded — a multi-byte character split across chunks stays intact and decoding is the caller's job (e.g. `TextDecoder` with `{ stream: true }`). For an error status no stream starts; the status and body arrive as a completed result. The timeout applies to the interval with no incoming data, so a long but active response is never cut.
+Same input; on a success status the body is delivered as ordered raw `Uint8Array` chunks through `onChunk`, undecoded. `onChunk` may be async: its returned promise is AWAITED and the next chunk is read only after it settles (the handler applies real backpressure, and its slowness consumes the stream's idle budget); a rejecting or never-settling handler promise ends the transfer like a thrown one — a multi-byte character split across chunks stays intact and decoding is the caller's job (e.g. `TextDecoder` with `{ stream: true }`). For an error status no stream starts; the status and body arrive as a completed result. The timeout applies to the interval with no incoming data, so a long but active response is never cut.
 
 ```js
 const decoder = new TextDecoder();
@@ -108,7 +108,7 @@ The plugin publishes no events.
 | `HTTP_NETWORK_FAILED` | The request could not reach the server, or the environment blocked it (in a browser this includes CORS blocks, which cannot be distinguished). | operational |
 | `HTTP_TIMEOUT` | The time budget ran out (whole request) or no data arrived within the idle budget (stream). | operational |
 | `HTTP_STREAM_INTERRUPTED` | The response stream was cut off before it finished. | operational |
-| `HTTP_REQUEST_FAILED` | Any other delivery failure, or the receiving `onChunk` handler threw (detail `stage: 'chunk-handler'`). | operational |
+| `HTTP_REQUEST_FAILED` | Any other delivery failure, or the receiving `onChunk` handler threw or returned a rejected promise (or a promise that never settled within the stream's idle budget) (detail `stage: 'chunk-handler'`). | operational |
 | `HTTP_NOT_FOUND` | `getText` only: the server responded 404. | operational |
 | `HTTP_MEDIA_TYPE_UNEXPECTED` | `getText` only: the response Content-Type is present and not in `acceptedMediaTypes`. | operational |
 | `SERVICE_UNAVAILABLE` | Called after deactivation/shutdown (thrown for `request`/`stream`, resolved as the error value for `getText`); an in-flight stream ends interrupted with this code. | operational |

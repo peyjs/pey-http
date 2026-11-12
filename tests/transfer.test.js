@@ -351,3 +351,30 @@ test('should_read_a_platform_headers_container_when_the_host_passes_one', () => 
   const mapped = normalizeTransferInput({ url: 'https://x.test/a', headers: new Map([['x-c', '3']]) });
   assert.equal(mapped.headers['x-c'], '3');
 });
+
+test('should_reach_the_structured_input_error_when_a_map_carries_a_symbol_header_key', () => {
+  // Round-14 regression: a platform container's entries() output is NOT
+  // the guaranteed [string, string] shape of Object.entries — a Symbol key
+  // (legal in a `Map`) used to die at the token check as a raw
+  // "Cannot convert a Symbol value to a string" with NO code, crossing the
+  // service boundary unstructured.
+  let error;
+  try {
+    normalizeTransferInput({ url: 'https://x.test/a', headers: new Map([[Symbol('x'), '1']]) });
+  } catch (caught) {
+    error = caught;
+  }
+  assert.equal(error?.code, ERROR_CODES.INPUT_INVALID);
+  assert.equal(error?.detail?.headerPosition, 1);
+});
+
+test('should_read_only_real_platform_containers_through_their_entries', () => {
+  // Round-14 regression: the entries() path used to run ARBITRARY caller
+  // code inside the normalizer — including a method INHERITED from a
+  // poisoned prototype ("injection from the prototype chain"). Only real
+  // platform types (Headers/Map/URLSearchParams) are read through
+  // entries(); anything else is the plain own-properties path.
+  const injected = Object.create({ entries: () => [['x-injected-from-prototype', 'injected']] });
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: injected });
+  assert.deepEqual({ ...spec.headers }, {}, 'no inherited entries() runs; the object is read property-wise');
+});
