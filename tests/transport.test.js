@@ -931,7 +931,11 @@ test('should_deliver_the_next_chunk_only_after_the_async_handler_settles_when_ba
       },
     },
   );
-  await new Promise((resolve) => setImmediate(resolve));
+  // Deterministic bounded wait: the first chunk has been handed to the
+  // handler (whose promise is parked), and chunk two has NOT been read.
+  for (let i = 0; i < 200 && handled.length < 1; i += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(handled, ['a'], 'chunk two waits behind the unsettled handler promise');
   resolveFirst();
