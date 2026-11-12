@@ -61,7 +61,7 @@ if (final.ending === 'completed') {
 
 ### `stream(input, { onChunk })`
 
-Same input; on a success status the body is delivered as ordered raw `Uint8Array` chunks through `onChunk`, undecoded. `onChunk` may be async: its returned promise is AWAITED and the next chunk is read only after it settles (the handler applies real backpressure, and its slowness consumes the stream's idle budget); a rejecting or never-settling handler promise ends the transfer like a thrown one — a multi-byte character split across chunks stays intact and decoding is the caller's job (e.g. `TextDecoder` with `{ stream: true }`). For an error status no stream starts; the status and body arrive as a completed result. The timeout applies to the interval with no incoming data, so a long but active response is never cut.
+Same input; on a success status the body is delivered as ordered raw `Uint8Array` chunks through `onChunk`, undecoded. `onChunk` may be async: its returned promise is AWAITED and the next chunk is read only after it settles (the handler applies real backpressure, and its slowness consumes the stream's idle budget); a rejecting handler promise ends the transfer like a thrown one (HTTP_REQUEST_FAILED, `stage: 'chunk-handler'`); a NEVER-SETTLING handler promise is cut by the stream's idle budget and ends HTTP_TIMEOUT — a multi-byte character split across chunks stays intact and decoding is the caller's job (e.g. `TextDecoder` with `{ stream: true }`). For an error status no stream starts; the status and body arrive as a completed result. The timeout applies to the interval with no incoming data, so a long but active response is never cut.
 
 ```js
 const decoder = new TextDecoder();
@@ -106,9 +106,9 @@ The plugin publishes no events.
 | `HTTP_REDIRECT_FORBIDDEN` | Cross-origin redirect, more than five redirects, or an unusable Location header. | operational |
 | `HTTP_INPUT_INVALID` | Malformed input (non-object input, bad headers/body/timeout, missing `onChunk`); or a present-but-unusable configuration value (timeouts, `acceptedMediaTypes`) with type `startup` and `detail.value`. | operational / startup |
 | `HTTP_NETWORK_FAILED` | The request could not reach the server, or the environment blocked it (in a browser this includes CORS blocks, which cannot be distinguished). | operational |
-| `HTTP_TIMEOUT` | The time budget ran out (whole request) or no data arrived within the idle budget (stream). | operational |
+| `HTTP_TIMEOUT` | The time budget ran out (whole request), no data arrived within the idle budget (stream), or the receiving handler's promise never settled within the idle budget. | operational |
 | `HTTP_STREAM_INTERRUPTED` | The response stream was cut off before it finished. | operational |
-| `HTTP_REQUEST_FAILED` | Any other delivery failure, or the receiving `onChunk` handler threw or returned a rejected promise (or a promise that never settled within the stream's idle budget) (detail `stage: 'chunk-handler'`). | operational |
+| `HTTP_REQUEST_FAILED` | Any other delivery failure, or the receiving `onChunk` handler threw or returned a rejected promise (detail `stage: 'chunk-handler'`). | operational |
 | `HTTP_NOT_FOUND` | `getText` only: the server responded 404. | operational |
 | `HTTP_MEDIA_TYPE_UNEXPECTED` | `getText` only: the response Content-Type is present and not in `acceptedMediaTypes`. | operational |
 | `SERVICE_UNAVAILABLE` | Called after deactivation/shutdown (thrown for `request`/`stream`, resolved as the error value for `getText`); an in-flight stream ends interrupted with this code. | operational |

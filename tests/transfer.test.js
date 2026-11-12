@@ -378,3 +378,49 @@ test('should_read_only_real_platform_containers_through_their_entries', () => {
   const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: injected });
   assert.deepEqual({ ...spec.headers }, {}, 'no inherited entries() runs; the object is read property-wise');
 });
+
+test('should_read_a_cross_realm_map_through_the_brand_check_when_the_host_spans_realms', async () => {
+  // Round-15 regression: instanceof fails on a REAL Map from another realm
+  // (vm frame, iframe), and the round-14 restriction then silently fell it
+  // to the zero-header Object.entries path — the same silent declared-data
+  // loss the container fix closed. A structured brand check reads the
+  // internal-slot tag across realms without executing any caller code.
+  const vm = await import('node:vm');
+  const crossRealmMap = vm.runInNewContext('new Map([["x-e", "5"]])');
+  assert.equal(crossRealmMap instanceof Map, false, 'the probe really crosses the realm boundary');
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: crossRealmMap });
+  assert.equal(spec.headers['x-e'], '5');
+});
+
+test('should_reject_a_symbol_header_value_as_not_a_string_pair_when_read_from_a_map', () => {
+  // Round-15 regression: the pair guard checked only the NAME half — a
+  // Symbol VALUE (reachable only through a Map) coerced silently to the
+  // lying string 'Symbol(v)' on the wire.
+  let error;
+  try {
+    normalizeTransferInput({ url: 'https://x.test/a', headers: new Map([['x-a', Symbol('v')]]) });
+  } catch (caught) {
+    error = caught;
+  }
+  assert.equal(error?.code, ERROR_CODES.INPUT_INVALID);
+  assert.equal(error?.detail?.headerPosition, 1);
+});
+
+test('should_reject_a_symbol_header_value_as_not_a_string_pair_when_read_from_a_map', () => {
+  // Round-15 regression: the pair guard checked only the NAME half — a
+  // Symbol VALUE (reachable through a Map, and through a plain object's
+  // own property) coerced silently to the lying string 'Symbol(v)' on the
+  // wire, while the documented contract stringifies numbers and objects
+  // as given.
+  let error;
+  try {
+    normalizeTransferInput({ url: 'https://x.test/a', headers: new Map([['x-a', Symbol('v')]]) });
+  } catch (caught) {
+    error = caught;
+  }
+  assert.equal(error?.code, ERROR_CODES.INPUT_INVALID);
+  assert.equal(error?.detail?.headerPosition, 1);
+  // The documented stringification of ordinary non-strings is untouched.
+  const spec = normalizeTransferInput({ url: 'https://x.test/a', headers: { 'x-n': 5, 'x-s': 'plain' } });
+  assert.equal(spec.headers['x-n'], '5');
+});
