@@ -1,8 +1,6 @@
 # Changelog
 
-## [2.1.0] - 1405-08-17
-
-Round-2 through round-19 review fixes (all unpublished; one release). MINOR: one behavior change plus a packaging-level removal.
+## [2.1.0] - 1405-08-22
 
 ### Changed
 
